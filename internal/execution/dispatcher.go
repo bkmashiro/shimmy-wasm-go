@@ -7,6 +7,7 @@ import (
 
 	"github.com/lambda-feedback/shimmy/internal/execution/dispatcher"
 	"github.com/lambda-feedback/shimmy/internal/execution/supervisor"
+	"github.com/lambda-feedback/shimmy/internal/execution/wasm"
 )
 
 type Dispatcher dispatcher.Dispatcher
@@ -32,7 +33,23 @@ type Params struct {
 }
 
 func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
-	if params.Config.Supervisor.IO.Interface == supervisor.RpcIO {
+	switch params.Config.Supervisor.IO.Interface {
+	case supervisor.WasmIO:
+		cfg := wasm.Config{
+			ModulePath:   params.Config.Supervisor.StartParams.Cmd,
+			MaxInstances: params.Config.MaxWorkers,
+			Timeout:      params.Config.Supervisor.SendParams.Timeout,
+		}
+
+		d := wasm.NewDispatcher(cfg, params.Log)
+
+		if err := d.Start(params.Context); err != nil {
+			return nil, err
+		}
+
+		return d, nil
+
+	case supervisor.RpcIO:
 		return dispatcher.NewDedicatedDispatcher(
 			dispatcher.DedicatedDispatcherParams{
 				Config: dispatcher.DedicatedDispatcherConfig{
@@ -42,7 +59,8 @@ func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
 				Log:     params.Log,
 			},
 		)
-	} else {
+
+	default:
 		return dispatcher.NewPooledDispatcher(
 			dispatcher.PooledDispatcherParams{
 				Config: dispatcher.PooledDispatcherConfig{

@@ -16,6 +16,9 @@ const (
 
 	// FileIO describes communication w/ processes over files
 	FileIO IOInterface = "file"
+
+	// WasmIO describes execution of WebAssembly modules via wazero
+	WasmIO IOInterface = "wasm"
 )
 
 // IOTransport describes the transport mechanism used to communicate with
