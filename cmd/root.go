@@ -47,7 +47,7 @@ functions on arbitrary, serverless platforms.`
 			&cli.StringFlag{
 				Name:     "interface",
 				Aliases:  []string{"i"},
-				Usage:    "the interface to use for worker process communication. Options: rpc, file.",
+				Usage:    "the interface to use for worker communication. Options: rpc, file, wasm.",
 				Value:    "rpc",
 				Category: "function",
 				EnvVars:  []string{"FUNCTION_INTERFACE"},
@@ -55,10 +55,9 @@ functions on arbitrary, serverless platforms.`
 			&cli.StringFlag{
 				Name:     "command",
 				Aliases:  []string{"c"},
-				Usage:    "the command to invoke to start the worker process.",
+				Usage:    "the command to invoke to start the worker process, or the WASM module path when --interface=wasm.",
 				Category: "function",
 				EnvVars:  []string{"FUNCTION_COMMAND"},
-				Required: true,
 			},
 			&cli.StringFlag{
 				Name:     "cwd",

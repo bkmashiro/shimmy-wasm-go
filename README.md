@@ -59,10 +59,10 @@ GLOBAL OPTIONS:
    function
 
    --arg value, -a value [ --arg value, -a value ]  additional arguments for to the worker process. [$FUNCTION_ARGS]
-   --command value, -c value                        the command to invoke to start the worker process. [$FUNCTION_COMMAND]
+   --command value, -c value                        the command to invoke to start the worker process, or the WASM module path when --interface=wasm. [$FUNCTION_COMMAND]
    --cwd value, -d value                            the working directory for the worker process. [$FUNCTION_WORKING_DIR]
    --env value, -e value [ --env value, -e value ]  additional environment variables for the worker process. [$FUNCTION_ENV]
-   --interface value, -i value                      the interface to use for worker process communication. Options: rpc, file. (default: "rpc") [$FUNCTION_INTERFACE]
+   --interface value, -i value                      the interface to use for worker communication. Options: rpc, file, wasm. (default: "rpc") [$FUNCTION_INTERFACE]
    --max-workers value, -n value                    the maximum number of worker processes to run concurrently. (default: number of CPU cores) [$FUNCTION_MAX_PROCS]
 
    rpc
@@ -243,6 +243,81 @@ For example, a Wolfram Language evaluation function in `evaluation.wl` would be 
 
 ```shell
 wolframscript -file evaluation.wl /tmp/shimmy/abc/request-data-123 /tmp/shimmy/abc/response-data-456
+```
+
+#### WebAssembly (`--interface wasm`, opt-in)
+
+The WASM interface executes a pre-built WASI module in-process using wazero. This
+is an execution backend only: Shimmy still owns the public HTTP/API contract,
+request validation, command routing, cases, and response handling.
+
+Shimmy does not compile evaluator source code at request time and does not infer
+a source language from dependency files. Language-specific work belongs in build
+or deployment recipes that produce an `eval.wasm` artifact.
+
+A generic WASM evaluator module must export:
+
+| Export | Purpose |
+|--------|---------|
+| `memory` | Guest linear memory. |
+| `alloc(size: i32) -> i32` | Reserves memory where Shimmy writes the request JSON. |
+| `evaluate(ptr: i32, len: i32) -> i32` | Executes one command and returns a response pointer. |
+
+Shimmy writes this internal adapter envelope into guest memory:
+
+```json
+{
+  "method": "eval",
+  "params": {
+    "response": "...",
+    "answer": "...",
+    "params": {}
+  }
+}
+```
+
+The response pointer returned by `evaluate` must point at:
+
+```text
+[p:p+4]       little-endian uint32 JSON length
+[p+4:p+4+len] JSON object bytes
+```
+
+Run a pre-built WASI module with:
+
+```shell
+FUNCTION_INTERFACE=wasm \
+FUNCTION_WASM_MODULE=/path/to/eval.wasm \
+FUNCTION_MAX_PROCS=1 \
+shimmy serve
+```
+
+`FUNCTION_COMMAND=/path/to/eval.wasm` is also accepted for compatibility, but
+`FUNCTION_WASM_MODULE` is clearer for new deployments.
+
+Example build recipes:
+
+```shell
+# Go
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o eval.wasm .
+
+# Rust
+cargo build --target wasm32-wasip1 --release
+
+# C/C++
+/opt/wasi-sdk/bin/clang --target=wasm32-wasip1 ... -o eval.wasm
+/opt/wasi-sdk/bin/clang++ --target=wasm32-wasip1 ... -o eval.wasm
+```
+
+The backend keeps a warm module instance pool and restores a full linear-memory
+snapshot after each request. This gives warm reuse without leaking guest mutable
+state between requests. Dirty-page restore, Python runtimes, Pyodide, and package
+bundling are intentionally out of scope for this generic backend.
+
+Try the state-isolation example:
+
+```shell
+scripts/demo-wasm.sh
 ```
 
 ### Sandboxed Execution (Linux only, experimental)

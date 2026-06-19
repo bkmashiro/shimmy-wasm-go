@@ -16,6 +16,9 @@ const (
 
 	// FileIO describes communication w/ processes over files
 	FileIO IOInterface = "file"
+
+	// WasmIO describes in-process execution of a pre-built WASI module.
+	WasmIO IOInterface = "wasm"
 )
 
 // IOTransport describes the transport mechanism used to communicate with

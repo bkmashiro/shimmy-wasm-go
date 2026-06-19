@@ -24,7 +24,7 @@ type SendConfig struct {
 // IOInterface describes the interface used to communicate with the worker.
 type IOConfig struct {
 	// Interface describes the communication between the supervisor
-	// and the worker. It can be either "rpc" or "file".
+	// and the worker. It can be "rpc", "file", or "wasm".
 	//
 	// If "rpc", the supervisor will communicate with the worker over
 	// a specified transport. The worker is expected to handle incoming
@@ -34,6 +34,9 @@ type IOConfig struct {
 	// files. Only valid for transient workers. The name of the files
 	// containing the message payload and response are passed as args
 	// to the worker process.
+	//
+	// If "wasm", Shimmy loads a pre-built WASI module from FUNCTION_COMMAND
+	// or FUNCTION_WASM_MODULE and calls its internal alloc/evaluate adapter ABI.
 	//
 	// Default is "rpc".
 	Interface IOInterface `conf:"interface"`
