@@ -321,7 +321,9 @@ snapshot after each request. This gives warm reuse without leaking guest mutable
 state between requests. Dirty-page restore, Python runtimes, Pyodide, and package
 bundling are intentionally out of scope for this generic backend.
 
-Try the state-isolation examples:
+Try the state-isolation examples. These are intentionally small synthetic
+evaluators for the Go/C++ artifact path; real language/runtime packaging such as
+Pyodide is a separate profile/follow-up.
 
 ```shell
 scripts/demo-wasm.sh
