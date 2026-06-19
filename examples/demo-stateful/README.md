@@ -13,6 +13,13 @@ Use it via the one-command demo runner:
 scripts/demo-wasm.sh
 ```
 
+The Go test suite also compiles this example when the local Go toolchain
+supports `GOOS=wasip1` and `//go:wasmexport`:
+
+```bash
+go test ./internal/execution/wasm -run TestGoStatefulExample_CompilesAndRunsThroughDispatcher -v
+```
+
 What the demo shows:
 
 1. Build Shimmy.

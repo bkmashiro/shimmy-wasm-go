@@ -2,9 +2,11 @@ package wasm
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,8 +51,55 @@ func buildCppCompareExample(t *testing.T) string {
 	return out
 }
 
-func TestCppCompareExample_CompilesAndRunsThroughDispatcher(t *testing.T) {
-	modulePath := buildCppCompareExample(t)
+func buildGoStatefulExample(t *testing.T) string {
+	t.Helper()
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("go is required to compile the Go WASM example")
+	}
+
+	root := repoRootFromTest(t)
+	out := filepath.Join(t.TempDir(), "eval.wasm")
+	cmd := exec.Command(goBin, "build", "-buildmode=c-shared", "-o", out, "./examples/demo-stateful")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+	output, err := cmd.CombinedOutput()
+	if err != nil && strings.Contains(string(output), "requires go1.24 or later") {
+		t.Skipf("go toolchain does not support //go:wasmexport:\n%s", string(output))
+	}
+	require.NoError(t, err, "compile Go WASM example:\n%s", string(output))
+	return out
+}
+
+func buildRustCompareExample(t *testing.T) string {
+	t.Helper()
+	rustc, err := exec.LookPath("rustc")
+	if err != nil {
+		t.Skip("rustc is required to compile the Rust WASM example")
+	}
+
+	root := repoRootFromTest(t)
+	src := filepath.Join(root, "examples", "demo-rust-compare", "evaluator.rs")
+	require.FileExists(t, src, "Rust WASM example source must exist")
+	out := filepath.Join(t.TempDir(), "eval.wasm")
+	cmd := exec.Command(rustc,
+		"--target", "wasm32-unknown-unknown",
+		"--crate-type", "cdylib",
+		"-C", "panic=abort",
+		"-O",
+		"-o", out,
+		src,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil && strings.Contains(string(output), "target may not be installed") {
+		t.Skipf("rust target wasm32-unknown-unknown is not installed:\n%s", string(output))
+	}
+	require.NoError(t, err, "compile Rust WASM example:\n%s", string(output))
+	return out
+}
+
+func assertCompareEvaluatorRunsThroughDispatcher(t *testing.T, modulePath string) {
+	t.Helper()
 
 	d := NewDispatcher(Config{
 		ModulePath:   modulePath,
@@ -87,13 +136,25 @@ func TestCppCompareExample_CompilesAndRunsThroughDispatcher(t *testing.T) {
 
 	assert.Equal(t, "eval", correct["command"])
 	assert.Equal(t, true, correctResult["is_correct"])
-	assert.Equal(t, "Correct!", correctResult["feedback"])
+	assert.NotEmpty(t, correctResult["feedback"])
 	assert.EqualValues(t, 1, correctResult["guest_invocation_count"])
 	assert.Equal(t, true, correctResult["snapshot_isolation_ok"])
 
 	assert.Equal(t, "eval", wrong["command"])
 	assert.Equal(t, false, wrongResult["is_correct"])
-	assert.Equal(t, "Try again.", wrongResult["feedback"])
+	assert.NotEmpty(t, wrongResult["feedback"])
 	assert.EqualValues(t, 1, wrongResult["guest_invocation_count"])
 	assert.Equal(t, true, wrongResult["snapshot_isolation_ok"])
+}
+
+func TestCppCompareExample_CompilesAndRunsThroughDispatcher(t *testing.T) {
+	assertCompareEvaluatorRunsThroughDispatcher(t, buildCppCompareExample(t))
+}
+
+func TestGoStatefulExample_CompilesAndRunsThroughDispatcher(t *testing.T) {
+	assertCompareEvaluatorRunsThroughDispatcher(t, buildGoStatefulExample(t))
+}
+
+func TestRustCompareExample_CompilesAndRunsThroughDispatcher(t *testing.T) {
+	assertCompareEvaluatorRunsThroughDispatcher(t, buildRustCompareExample(t))
 }

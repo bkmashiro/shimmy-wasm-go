@@ -306,6 +306,10 @@ GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o eval.wasm .
 # Rust
 cargo build --target wasm32-wasip1 --release
 
+# Freestanding Rust
+rustc --target wasm32-unknown-unknown --crate-type cdylib \
+  -C panic=abort -O -o eval.wasm evaluator.rs
+
 # C/C++ with wasi-sdk
 /opt/wasi-sdk/bin/clang --target=wasm32-wasip1 ... -o eval.wasm
 /opt/wasi-sdk/bin/clang++ --target=wasm32-wasip1 ... -o eval.wasm
@@ -331,6 +335,7 @@ separate profile/follow-up.
 ```shell
 scripts/demo-wasm.sh
 scripts/demo-cpp-wasm.sh
+go test ./internal/execution/wasm -run 'Test(GoStateful|RustCompare|CppCompare)Example_CompilesAndRunsThroughDispatcher' -v
 ```
 
 ### Sandboxed Execution (Linux only, experimental)
