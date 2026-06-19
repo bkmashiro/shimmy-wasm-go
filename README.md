@@ -247,9 +247,11 @@ wolframscript -file evaluation.wl /tmp/shimmy/abc/request-data-123 /tmp/shimmy/a
 
 #### WebAssembly (`--interface wasm`, opt-in)
 
-The WASM interface executes a pre-built WASI module in-process using wazero. This
-is an execution backend only: Shimmy still owns the public HTTP/API contract,
-request validation, command routing, cases, and response handling.
+The WASM interface executes a pre-built WebAssembly module in-process using
+wazero. The module can be a WASI module or a small freestanding module as long
+as it exports the Shimmy adapter ABI below. This is an execution backend only:
+Shimmy still owns the public HTTP/API contract, request validation, command
+routing, cases, and response handling.
 
 Shimmy does not compile evaluator source code at request time and does not infer
 a source language from dependency files. Language-specific work belongs in build
@@ -304,9 +306,14 @@ GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o eval.wasm .
 # Rust
 cargo build --target wasm32-wasip1 --release
 
-# C/C++
+# C/C++ with wasi-sdk
 /opt/wasi-sdk/bin/clang --target=wasm32-wasip1 ... -o eval.wasm
 /opt/wasi-sdk/bin/clang++ --target=wasm32-wasip1 ... -o eval.wasm
+
+# Freestanding C++ with Zig's clang driver
+zig c++ -target wasm32-freestanding -nostdlib \
+  -Wl,--no-entry -Wl,--export=alloc -Wl,--export=evaluate -Wl,--export-memory \
+  -o eval.wasm evaluator.cpp
 ```
 
 The backend keeps a warm module instance pool and restores a full linear-memory
@@ -314,10 +321,11 @@ snapshot after each request. This gives warm reuse without leaking guest mutable
 state between requests. Dirty-page restore, Python runtimes, Pyodide, and package
 bundling are intentionally out of scope for this generic backend.
 
-Try the state-isolation example:
+Try the state-isolation examples:
 
 ```shell
 scripts/demo-wasm.sh
+scripts/demo-cpp-wasm.sh
 ```
 
 ### Sandboxed Execution (Linux only, experimental)
