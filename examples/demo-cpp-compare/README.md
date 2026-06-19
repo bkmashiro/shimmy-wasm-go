@@ -16,7 +16,10 @@ instance while restoring guest memory after each request.
 
 ## Build
 
-The demo uses Zig's clang-compatible C++ driver because the default macOS Apple clang does not ship a WebAssembly target:
+The reference environment for this example is Linux, or a Linux container, with
+Zig installed. The same command also works on macOS when Zig is installed; the
+point is to rely on an explicit WASM-capable toolchain rather than the host's
+default C++ compiler.
 
 ```bash
 zig c++ \
