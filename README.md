@@ -297,28 +297,29 @@ shimmy serve
 `FUNCTION_COMMAND=/path/to/eval.wasm` is also accepted for compatibility, but
 `FUNCTION_WASM_MODULE` is clearer for new deployments.
 
-Example build recipes:
+Example build recipes, including package-shaped evaluators:
 
 ```shell
-# Go
-GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o eval.wasm .
+# Go package/module
+cd examples/demo-go-package
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o eval.wasm ./cmd/evaluator
 
-# Rust
-cargo build --target wasm32-wasip1 --release
+# Rust crate/package
+cd examples/demo-rust-package
+cargo build --target wasm32-unknown-unknown --release
 
-# Freestanding Rust
-rustc --target wasm32-unknown-unknown --crate-type cdylib \
-  -C panic=abort -O -o eval.wasm evaluator.rs
+# C++ package with Makefile + Zig's clang driver
+cd examples/demo-cpp-package
+make wasm OUT=eval.wasm
 
-# C/C++ with wasi-sdk
+# C/C++ with wasi-sdk also works when the project exposes the same ABI
 /opt/wasi-sdk/bin/clang --target=wasm32-wasip1 ... -o eval.wasm
 /opt/wasi-sdk/bin/clang++ --target=wasm32-wasip1 ... -o eval.wasm
-
-# Freestanding C++ with Zig's clang driver
-zig c++ -target wasm32-freestanding -nostdlib \
-  -Wl,--no-entry -Wl,--export=alloc -Wl,--export=evaluate -Wl,--export-memory \
-  -o eval.wasm evaluator.cpp
 ```
+
+Shimmy intentionally does not run these build commands from `shimmy serve`.
+Build recipes can be overridden in Makefiles, CI, Dockerfiles, or deployment
+scripts; the runtime boundary remains the pre-built `eval.wasm` module.
 
 The backend keeps a warm module instance pool and restores a full linear-memory
 snapshot after each request. This gives warm reuse without leaking guest mutable
@@ -335,7 +336,7 @@ separate profile/follow-up.
 ```shell
 scripts/demo-wasm.sh
 scripts/demo-cpp-wasm.sh
-go test ./internal/execution/wasm -run 'Test(GoStateful|RustCompare|CppCompare)Example_CompilesAndRunsThroughDispatcher' -v
+go test ./internal/execution/wasm -run 'Test(GoStateful|RustCompare|CppCompare|GoPackage|RustPackage|CppPackage)Example_CompilesAndRunsThroughDispatcher' -v
 ```
 
 ### Sandboxed Execution (Linux only, experimental)
