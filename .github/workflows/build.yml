@@ -77,6 +77,39 @@ jobs:
       - name: Run Tests
         run: go test -json ./...
 
+  test-wasm-examples:
+    name: WASM Example Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y file
+          rustup target add wasm32-unknown-unknown
+          go mod download
+
+      - name: Run WASM example smoke tests
+        run: |
+          set -euo pipefail
+          scripts/demo-wasm.sh
+          scripts/demo-cpp-wasm.sh
+          go test ./internal/execution/wasm -run 'Test(GoStateful|RustCompare|CppCompare|GoPackage|RustPackage|CppPackage)Example_CompilesAndRunsThroughDispatcher' -count=1 -v
+
 #      - name: Upload test results
 #        uses: actions/upload-artifact@v4
 #        with:

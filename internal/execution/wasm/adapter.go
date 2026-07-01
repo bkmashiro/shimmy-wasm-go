@@ -95,6 +95,9 @@ func (a *wasmAdapter) send(
 	if err != nil {
 		return nil, fmt.Errorf("wasm: alloc(%d): %w", reqLen, err)
 	}
+	if len(allocRes) != 1 {
+		return nil, fmt.Errorf("wasm: alloc returned %d values, expected 1", len(allocRes))
+	}
 
 	reqPtr := allocRes[0]
 	if reqPtr == 0 {
@@ -128,6 +131,9 @@ func (a *wasmAdapter) send(
 	evalRes, err := a.evalFn.Call(ctx, reqPtr, reqLen)
 	if err != nil {
 		return nil, fmt.Errorf("wasm: evaluate: %w", err)
+	}
+	if len(evalRes) != 1 {
+		return nil, fmt.Errorf("wasm: evaluate returned %d values, expected 1", len(evalRes))
 	}
 
 	resPtr := uint32(evalRes[0])

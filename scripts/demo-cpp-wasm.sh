@@ -20,7 +20,7 @@ DEMO_DIR="${ROOT}/examples/demo-cpp-compare"
 WASM="${DEMO_DIR}/eval.wasm"
 LOG="${ROOT}/.demo-cpp-wasm-server.log"
 
-for cmd in go curl python3 zig; do
+for cmd in go curl python3 zig file; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     echo "error: ${cmd} is required" >&2
     exit 1

@@ -27,6 +27,7 @@ var ErrDispatcherClosed = fmt.Errorf("wasm: dispatcher is shut down")
 type Dispatcher struct {
 	cfg      Config
 	rt       wazero.Runtime
+	cache    wazero.CompilationCache
 	compiled wazero.CompiledModule
 	modCfg   wazero.ModuleConfig
 	pool     chan *wasmSupervisor
@@ -89,7 +90,9 @@ func (d *Dispatcher) Start(ctx context.Context) error {
 	// Pick up sandbox overrides from FUNCTION_WASM_* env vars (including
 	// FUNCTION_WASM_MODULE as an alternative to FUNCTION_COMMAND), then apply
 	// sensible defaults for any fields still at their zero values.
-	d.cfg.applyEnv()
+	if err := d.cfg.applyEnv(); err != nil {
+		return fmt.Errorf("wasm: invalid environment configuration: %w", err)
+	}
 	d.cfg.applyDefaults()
 
 	if d.cfg.ModulePath == "" {
@@ -132,6 +135,7 @@ func (d *Dispatcher) Start(ctx context.Context) error {
 				zap.Error(err))
 		} else {
 			rtCfg = rtCfg.WithCompilationCache(cache)
+			d.cache = cache
 			d.log.Info("wazero compilation cache enabled", zap.String("dir", d.cfg.CompileCacheDir))
 		}
 	}
@@ -370,6 +374,12 @@ drained:
 			return fmt.Errorf("wasm: close runtime: %w", err)
 		}
 		d.rt = nil
+	}
+	if d.cache != nil {
+		if err := d.cache.Close(ctx); err != nil {
+			return fmt.Errorf("wasm: close compilation cache: %w", err)
+		}
+		d.cache = nil
 	}
 
 	return nil

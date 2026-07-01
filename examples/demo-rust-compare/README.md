@@ -21,6 +21,7 @@ The reference environment is Linux, or a Linux container, with Rust installed an
 the `wasm32-unknown-unknown` target available:
 
 ```bash
+cd examples/demo-rust-compare
 rustup target add wasm32-unknown-unknown
 rustc \
   --target wasm32-unknown-unknown \

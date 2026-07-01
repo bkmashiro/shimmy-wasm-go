@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -51,14 +52,16 @@ func (c *Config) applyDefaults() {
 // applyEnv reads FUNCTION_WASM_* overrides. These settings are intentionally
 // limited to generic WASM runtime concerns; Python/reactor/package bundling is
 // out of scope for this backend.
-func (c *Config) applyEnv() {
+func (c *Config) applyEnv() error {
 	if v := os.Getenv("FUNCTION_WASM_MODULE"); v != "" {
 		c.ModulePath = v
 	}
 	if v := os.Getenv("FUNCTION_WASM_MAX_MEMORY_PAGES"); v != "" {
-		if n, err := strconv.ParseUint(v, 10, 32); err == nil {
-			c.MaxMemoryPages = uint32(n)
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return fmt.Errorf("FUNCTION_WASM_MAX_MEMORY_PAGES must be an unsigned 32-bit integer: %w", err)
 		}
+		c.MaxMemoryPages = uint32(n)
 	}
 	if v := os.Getenv("FUNCTION_WASM_ALLOWED_PATHS"); v != "" {
 		c.AllowedPaths = splitNonEmpty(v, ",")
@@ -69,6 +72,7 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("FUNCTION_WASM_COMPILE_CACHE"); v != "" {
 		c.CompileCacheDir = v
 	}
+	return nil
 }
 
 func splitNonEmpty(s, sep string) []string {

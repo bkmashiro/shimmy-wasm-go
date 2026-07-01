@@ -15,6 +15,7 @@ pre-built module.
 ## Build
 
 ```bash
+cd examples/demo-rust-package
 rustup target add wasm32-unknown-unknown
 cargo build --target wasm32-unknown-unknown --release
 ```

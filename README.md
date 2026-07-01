@@ -333,6 +333,14 @@ Linux by default. These are intentionally small synthetic evaluators for the
 Go/C++ artifact path; real language/runtime packaging such as Pyodide is a
 separate profile/follow-up.
 
+Minimum toolchains for the example commands below:
+
+- `scripts/demo-wasm.sh`: Go with `GOOS=wasip1 GOARCH=wasm` support, `curl`,
+  and `python3`.
+- `scripts/demo-cpp-wasm.sh`: the same tools plus `zig` and `file`.
+- Rust example tests: `rustc`/`cargo` plus
+  `rustup target add wasm32-unknown-unknown`.
+
 ```shell
 scripts/demo-wasm.sh
 scripts/demo-cpp-wasm.sh
