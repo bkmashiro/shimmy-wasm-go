@@ -70,7 +70,7 @@ then selects one explicit Host-owned lifecycle: post-prepare linear-memory
 synchronous `fresh` instances. Snapshot mode can select full-copy, COW or an
 eligible dirty-page strategy; timeout, trap, memory-size drift or restore failure
 closes the unsafe slot instead of returning it to the prepared pool. See the
-[source-level WASM/memory guide](architecture/wasm-wazero-memory.md) for the
+[source-level WASM/memory guide](https://bkmashiro.github.io/shimmy-docs/architecture/wasm-wazero-memory.html) for the
 actual object ownership, snapshot timing and reset system calls.
 
 `python-reactor`, `reactor-python`, and `FUNCTION_INTERFACE=reactor-python` are
