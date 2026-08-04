@@ -12,4 +12,9 @@ this repository.
 | [python-runtime-handoff.md](python-runtime-handoff.md) | Exact-bundle, ABI, and binary128 consumer gates for the pending agent runtime handoff. |
 | [live-demo-playbook.md](live-demo-playbook.md) | Presenter-facing live demo script, expected outputs, and troubleshooting. |
 | [python-examples.md](python-examples.md) | Plain Python / NumPy / SciPy route demos. |
-| [wasm-backend-model.md](wasm-backend-model.md) | Canonical product tiers plus runtime interface, WASM profile, and build-recipe boundaries. |
+| [architecture/README.md](architecture/README.md) | **Canonical architecture entry:** common control plane, routing, lifecycle and ownership. |
+| [architecture/wasm-wazero-memory.md](architecture/wasm-wazero-memory.md) | wazero, ABIs, linear memory, snapshots, Linux COW layout/syscalls and reset strategies. |
+| [architecture/dbi-native-path.md](architecture/dbi-native-path.md) | DynamoRIO wrapper, native file/RPC lifecycles, policy callbacks and DBI boundaries. |
+| [architecture/qemu-guest-path.md](architecture/qemu-guest-path.md) | Guest image/protocol, file/RPC forwarding, off/lazy/eager reset and whole-guest lifecycle. |
+| [architecture/configuration-and-verification.md](architecture/configuration-and-verification.md) | Exact settings, startup guards, observability, test layers and release checklist. |
+| [wasm-backend-model.md](wasm-backend-model.md) | Product tiers, runtime interfaces, WASM profiles and build-recipe boundaries; use the architecture set for mechanism details. |

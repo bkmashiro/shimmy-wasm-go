@@ -101,11 +101,17 @@ they do not download runtime images, Node/Pyodide, DBI clients, or QEMU artifact
 QEMU and DynamoRIO are mutually exclusive terminal wrappers, not evaluator
 interfaces, and Shimmy never retries a failed native/DBI request under QEMU.
 
-See [the backend model](docs/wasm-backend-model.md) for the canonical support
-classification, [deployment recipes](docs/deployment-recipes.md) for exact
-variables and artifact status, and [QEMU evidence](docs/qemu-fallback-evidence.json)
-for its current **PARTIAL** qualification. For a compact four-lane demonstration,
-use the [Docker Compose stack](demo/compose/README.md).
+See the [source-level architecture guide](docs/architecture/README.md) for the
+common control plane and the three detailed execution paths:
+[WASM/wazero/memory](docs/architecture/wasm-wazero-memory.md),
+[DBI/native](docs/architecture/dbi-native-path.md), and
+[QEMU/guest lifecycle](docs/architecture/qemu-guest-path.md). See
+[the backend model](docs/wasm-backend-model.md) for support classification and
+[deployment recipes](docs/deployment-recipes.md) for variables and artifact
+status. The [QEMU evidence JSON](docs/qemu-fallback-evidence.json) is a
+version-bound **PARTIAL** qualification record, not proof for arbitrary current
+HEADs. For a compact four-lane demonstration, use the
+[Docker Compose stack](demo/compose/README.md).
 
 ## Evaluation Runtime Interface
 

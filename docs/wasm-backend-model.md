@@ -65,9 +65,13 @@ agent_runtime_v1.host_call
 ```
 
 The artifact and manifest are verified before compilation. Shimmy compiles once,
-then creates a fresh, exclusively owned module for every request. Served modules
-are closed, never restored or returned to a pool. Snapshot/COW configuration is
-rejected for this profile.
+then selects one explicit Host-owned lifecycle: post-prepare linear-memory
+`snapshot` restore (the default), never-served prepared `single-use` slots, or
+synchronous `fresh` instances. Snapshot mode can select full-copy, COW or an
+eligible dirty-page strategy; timeout, trap, memory-size drift or restore failure
+closes the unsafe slot instead of returning it to the prepared pool. See the
+[source-level WASM/memory guide](architecture/wasm-wazero-memory.md) for the
+actual object ownership, snapshot timing and reset system calls.
 
 `python-reactor`, `reactor-python`, and `FUNCTION_INTERFACE=reactor-python` are
 configuration aliases for Agent Python. They do not activate the deleted legacy
