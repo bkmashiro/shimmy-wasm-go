@@ -100,7 +100,7 @@ func ParseWorkerInput(raw []byte) (*WorkerInput, error) {
 	if input.Schema != "agent-python-ultimate-worker-input/v1" {
 		return nil, fmt.Errorf("unsupported worker input schema %q", input.Schema)
 	}
-	plan := &Plan{Schema: PlanSchemaVersion, Rows: []PlanRow{input.Row}}
+	plan := &Plan{Schema: PlanSchemaVersion, Seed: 1, Rows: []PlanRow{input.Row}}
 	if err := ValidatePlan(plan); err != nil {
 		return nil, err
 	}

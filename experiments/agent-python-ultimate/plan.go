@@ -24,6 +24,8 @@ var canonicalCampaignOrder = []string{
 	"payload-shape",
 	"dirty-sparse",
 	"dirty-pattern",
+	"dirty-replication",
+	"lifecycle-tail",
 	"cpu",
 	"interaction-corners",
 	"concurrency",
@@ -41,6 +43,8 @@ var campaignRowCounts = map[string]int{
 	"payload-shape":         48,
 	"dirty-sparse":          348,
 	"dirty-pattern":         72,
+	"dirty-replication":     144,
+	"lifecycle-tail":        8,
 	"cpu":                   108,
 	"interaction-corners":   144,
 	"concurrency":           84,
@@ -194,7 +198,7 @@ func ExpandPlanFromConfig(cfg *PlanConfig, opts PlanExpandOptions) (*Plan, error
 		rows = filtered
 	}
 
-	plan := &Plan{Schema: PlanSchemaVersion, Rows: rows}
+	plan := &Plan{Schema: PlanSchemaVersion, Seed: seed, Rows: rows}
 	if err := ValidatePlan(plan); err != nil {
 		return nil, err
 	}
@@ -253,6 +257,10 @@ func expandCampaign(name string) []PlanRow {
 		return dirtySparseRows()
 	case "dirty-pattern":
 		return dirtyPatternRows()
+	case "dirty-replication":
+		return dirtyReplicationRows()
+	case "lifecycle-tail":
+		return lifecycleTailRows()
 	case "cpu":
 		return cpuRows()
 	case "interaction-corners":
@@ -450,6 +458,69 @@ func dirtyPatternRows() []PlanRow {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func dirtyReplicationRows() []PlanRow {
+	lifecycles := []Lifecycle{LifecycleSingleUse, LifecycleSnapshotMemcpy, LifecycleSnapshotCow}
+	arenas := []int{8, 32, 64, 128}
+	dirtyRates := []int{10, 100, 1000, 5000}
+	patterns := []string{"contiguous", "sparse", "fixed-seed-random"}
+	rows := make([]PlanRow, 0, campaignRowCounts["dirty-replication"])
+	for _, lifecycle := range lifecycles {
+		for _, arena := range arenas {
+			for _, dirtyRate := range dirtyRates {
+				for _, pattern := range patterns {
+					arenaValue, dirtyValue := arena, dirtyRate
+					row := baseRow("dirty-replication", lifecycle)
+					row.Pool, row.PreparedCapacity, row.Repeat = 1, 1, 3
+					row.ArenaMiB, row.DirtyBps = &arenaValue, &dirtyValue
+					row.DirtyPattern = pattern
+					row.PayloadShape = "flat-ascii"
+					if lifecycle == LifecycleSnapshotMemcpy {
+						row.SnapshotSelected = "memcpy"
+					}
+					if lifecycle == LifecycleSnapshotCow {
+						row.SnapshotSelected = "cow"
+					}
+					rows = append(rows, row)
+				}
+			}
+		}
+	}
+	return rows
+}
+
+func lifecycleTailRows() []PlanRow {
+	lifecycles := []Lifecycle{LifecycleFresh, LifecycleSingleUse, LifecycleSnapshotMemcpy, LifecycleSnapshotCow}
+	concurrencyLevels := []int{1, 4}
+	rows := make([]PlanRow, 0, campaignRowCounts["lifecycle-tail"])
+	for _, lifecycle := range lifecycles {
+		for _, concurrency := range concurrencyLevels {
+			concurrencyValue := concurrency
+			row := baseRow("lifecycle-tail", lifecycle)
+			row.Pool, row.PreparedCapacity, row.Repeat = concurrency, concurrency, 12
+			row.Concurrency = &concurrencyValue
+			row.PayloadShape = "flat-ascii"
+			if lifecycle == LifecycleSnapshotMemcpy {
+				row.SnapshotSelected = "memcpy"
+			}
+			if lifecycle == LifecycleSnapshotCow {
+				row.SnapshotSelected = "cow"
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+func stableWorkerSeed(planSeed int64, rowID string) int64 {
+	h := fnv.New64a()
+	_, _ = fmt.Fprintf(h, "%d\x00%s", planSeed, rowID)
+	seed := int64(h.Sum64() & ((1 << 63) - 1))
+	if seed == 0 {
+		return 1
+	}
+	return seed
 }
 
 func cpuRows() []PlanRow {

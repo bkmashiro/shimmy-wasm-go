@@ -46,6 +46,23 @@ TCP connection.
 `--limit` is only for explicit smoke runs. The limit and resulting plan are
 stored in the run directory.
 
+### Focused replication plans
+
+Two small plans are reserved for independent Slurm blocks:
+
+- `configs/focused-dirty.json`: 144 matched rows covering three reusable
+  lifecycles, 8/32/64/128 MiB arenas, 10/100/1000/5000 dirty basis points,
+  and contiguous/sparse/fixed-seed-random page order. Each row records three
+  raw requests.
+- `configs/focused-lifecycle.json`: eight rows crossing all four lifecycles
+  with concurrency 1 and 4. Existing phase events separate startup,
+  checkout/wait, execute, restore/close, refill/replacement, and shutdown.
+
+Use a different explicit plan seed for each independent block. The seed is
+stored in `plan.json`, determines a stable per-row worker seed, and contributes
+to `plan_sha256`. Resume is allowed only when executable, source, artifact,
+manifest, config, and plan hashes all match.
+
 ## Local gates
 
 ```bash
@@ -81,6 +98,47 @@ memory claims apply only to the allocated Slurm cgroup on the fixed shared host.
 The controller uses `sbcast` after the job reaches `RUNNING`; the job does not
 read `/vol/bitbucket` and needs no remote Go, Docker, or sudo.
 
+After committing the exact source, prepare one local bundle per config and
+seed. Bundle preparation performs no SSH or Slurm action:
+
+```bash
+scripts/prepare-agent-python-doc-bundle.sh \
+  /tmp/shimmy-dirty-seed-2026080601 \
+  experiments/agent-python-ultimate/configs/focused-dirty.json \
+  2026080601
+scripts/prepare-agent-python-doc-bundle.sh \
+  /tmp/shimmy-lifecycle-seed-2026080602 \
+  experiments/agent-python-ultimate/configs/focused-lifecycle.json \
+  2026080602
+```
+
+`upload` independently verifies the signed source commit, reconstructs the Linux
+runner and plan preview from `git archive`, and compares the committed config,
+Slurm script, safe extractor, and all bundle hashes before any SSH action.
+
+Tomorrow's manual sequence is `upload -> submit -> stage`; the controller connects
+to `shell2` by default and reuses a 15-minute SSH ControlMaster, while `sbatch`
+requests the DoC GPU partition/node. Result validation, pull, ACK, and controller
+cleanup remain separate:
+
+```bash
+RUN_ID=agent-python-YYYYMMDDthhmmssz-<8-hex>
+scripts/benchmark-agent-python-doc.sh upload "$RUN_ID" /tmp/shimmy-dirty-seed-2026080601
+JOB_ID="$(scripts/benchmark-agent-python-doc.sh submit "$RUN_ID")"
+scripts/benchmark-agent-python-doc.sh stage "$RUN_ID" "$JOB_ID"
+# After RESULT_READY=yes, choose a new local destination. Pull performs bounded
+# streaming extraction plus `agent-python-ultimate validate --require-provenance`
+# before writing its receipt.
+RESULT_DIR="$HOME/shimmy-results/$RUN_ID"
+scripts/benchmark-agent-python-doc.sh pull "$JOB_ID" "$RESULT_DIR"
+scripts/benchmark-agent-python-doc.sh ack "$JOB_ID" "$RESULT_DIR"
+scripts/benchmark-agent-python-doc.sh cleanup-controller "$RUN_ID"
+```
+
+Repeat with distinct run IDs and seeds. DoC rows establish the current Agent
+Python and Linux lifecycle/dirty-state evidence only; Lambda DBI, Lambda UFFD,
+and QEMU remain separate experiment classes.
+
 ## Output
 
 Each run contains:
@@ -93,6 +151,11 @@ Each run contains:
 - `checkpoint.jsonl`: fsync-backed completion log
 - `report.json`: recomputed campaign/lane summaries
 - `report.recomputed.json`: independent `validate` output
+- `provenance/input-manifest.json` and `provenance/plan.preview.json`: signed-source
+  bundle identity repeated into the result for compute-side and pull-side validation
 
-Run `agent-python-ultimate validate --output RUN_DIR` after transport and compare
-the two reports before making any public performance claim.
+`pull` runs `agent-python-ultimate validate --output RUN_DIR --require-provenance`
+after transport and writes `validation-receipt.json`. `ack` verifies that receipt
+against the local result archive and Slurm job ID, then recomputes the remote
+archive digest before ACK and cleanup. Compare the two reports before making any
+public performance claim.

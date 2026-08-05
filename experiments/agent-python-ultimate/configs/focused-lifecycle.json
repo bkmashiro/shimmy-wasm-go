@@ -1,0 +1,9 @@
+{
+  "schema": "agent-python-ultimate-config/v1",
+  "seed": 2026080602,
+  "campaigns": {
+    "lifecycle-tail": { "enabled": true }
+  },
+  "allow_large_plan": false,
+  "max_rows": 8
+}

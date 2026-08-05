@@ -73,6 +73,7 @@ type PlanRow struct {
 // Plan is the full expanded plan used by benchmark generation.
 type Plan struct {
 	Schema string    `json:"schema"`
+	Seed   int64     `json:"seed,omitempty"`
 	Rows   []PlanRow `json:"rows"`
 }
 
@@ -130,6 +131,9 @@ func ValidatePlan(plan *Plan) error {
 	}
 	if plan.Schema != PlanSchemaVersion {
 		return fmt.Errorf("unsupported plan schema %q", plan.Schema)
+	}
+	if plan.Seed <= 0 {
+		return fmt.Errorf("plan.seed must be positive")
 	}
 	ids := map[string]struct{}{}
 

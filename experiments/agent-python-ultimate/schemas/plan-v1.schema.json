@@ -3,10 +3,14 @@
   "title": "agent-python-ultimate Plan",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "rows"],
+  "required": ["schema", "seed", "rows"],
   "properties": {
     "schema": {
       "const": "agent-python-ultimate-plan/v1"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 1
     },
     "rows": {
       "type": "array",

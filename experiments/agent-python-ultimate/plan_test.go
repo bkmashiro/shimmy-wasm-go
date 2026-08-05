@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,8 +31,10 @@ func TestPlanExpanderReturnsExpectedUltimateRowCount(t *testing.T) {
 	for _, row := range plan.Rows {
 		counts[row.Campaign]++
 	}
-	for campaign, expected := range campaignRowCounts {
-		assert.Equalf(t, expected, counts[campaign], "campaign %s mismatch", campaign)
+	for campaign, config := range cfg.Campaigns {
+		if config.Enabled {
+			assert.Equalf(t, campaignRowCounts[campaign], counts[campaign], "campaign %s mismatch", campaign)
+		}
 	}
 }
 
@@ -127,4 +130,58 @@ func TestPlanConfigMaxRowsAppliedForCampaignSubset(t *testing.T) {
 
 	_, err = ExpandPlanFromConfig(cfg, PlanExpandOptions{MaxRows: 1, Seed: 2})
 	require.Error(t, err)
+}
+
+func TestFocusedDirtyReplicationPlanIsExplicitAndSeeded(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("configs", "focused-dirty.json"))
+	require.NoError(t, err)
+	cfg, err := ParsePlanConfig(raw)
+	require.NoError(t, err)
+
+	plan, err := ExpandPlanFromConfig(cfg, PlanExpandOptions{Seed: 2026080601})
+	require.NoError(t, err)
+	require.Len(t, plan.Rows, 144)
+	assert.Equal(t, int64(2026080601), plan.Seed)
+
+	for _, row := range plan.Rows {
+		assert.Equal(t, "dirty-replication", row.Campaign)
+		assert.Contains(t, []Lifecycle{LifecycleSingleUse, LifecycleSnapshotMemcpy, LifecycleSnapshotCow}, row.Lifecycle)
+		require.NotNil(t, row.ArenaMiB)
+		assert.Contains(t, []int{8, 32, 64, 128}, *row.ArenaMiB)
+		require.NotNil(t, row.DirtyBps)
+		assert.Contains(t, []int{10, 100, 1000, 5000}, *row.DirtyBps)
+		assert.Contains(t, []string{"contiguous", "sparse", "fixed-seed-random"}, row.DirtyPattern)
+		assert.Equal(t, 3, row.Repeat)
+		assert.NotZero(t, stableWorkerSeed(plan.Seed, row.ID))
+	}
+}
+
+func TestFocusedLifecycleTailPlanSeparatesLifecycleAndConcurrency(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("configs", "focused-lifecycle.json"))
+	require.NoError(t, err)
+	cfg, err := ParsePlanConfig(raw)
+	require.NoError(t, err)
+
+	plan, err := ExpandPlanFromConfig(cfg, PlanExpandOptions{Seed: cfg.Seed})
+	require.NoError(t, err)
+	require.Len(t, plan.Rows, 8)
+
+	seen := map[string]bool{}
+	for _, row := range plan.Rows {
+		require.NotNil(t, row.Concurrency)
+		seen[string(row.Lifecycle)+"/c"+fmt.Sprint(*row.Concurrency)] = true
+		assert.Equal(t, 12, row.Repeat)
+	}
+	for _, lifecycle := range []Lifecycle{LifecycleFresh, LifecycleSingleUse, LifecycleSnapshotMemcpy, LifecycleSnapshotCow} {
+		for _, concurrency := range []int{1, 4} {
+			assert.True(t, seen[string(lifecycle)+"/c"+fmt.Sprint(concurrency)])
+		}
+	}
+}
+
+func TestStableWorkerSeedDependsOnPlanSeedAndRowIdentity(t *testing.T) {
+	a := stableWorkerSeed(100, "row-a")
+	assert.Equal(t, a, stableWorkerSeed(100, "row-a"))
+	assert.NotEqual(t, a, stableWorkerSeed(101, "row-a"))
+	assert.NotEqual(t, a, stableWorkerSeed(100, "row-b"))
 }

@@ -159,7 +159,7 @@ func TestPlanValidationAcceptsCanonicalRows(t *testing.T) {
 		DirtyBps:         &dirty,
 		PayloadShape:     "flat-ascii",
 	}
-	plan := Plan{Schema: PlanSchemaVersion, Rows: []PlanRow{row}}
+	plan := Plan{Schema: PlanSchemaVersion, Seed: 1, Rows: []PlanRow{row}}
 	b, err := json.Marshal(plan)
 	require.NoError(t, err)
 	parsed, err := ParsePlanJSON(b)
