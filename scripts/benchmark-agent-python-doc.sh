@@ -251,7 +251,8 @@ pull_result() {
   "${SSH[@]}" srun --jobid="$job_id" --overlap -N1 -n1 \
     cat "/tmp/shimmy-agent-python-$job_id/result.transport.json" \
     | receive_bounded_stdin "$temp_dir/result.transport.json" 65536
-  IFS=$'\t' read -r expected_bytes expected_hash < <(python3 - "$job_id" "$temp_dir/result.transport.json" <<'PY'
+  local transport_fields
+  transport_fields="$(python3 - "$job_id" "$temp_dir/result.transport.json" <<'PY'
 import json
 import pathlib
 import re
@@ -271,7 +272,17 @@ if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
     raise SystemExit("invalid result transport hash")
 print(f"{size}\t{digest}")
 PY
-)
+)"
+  if [[ "$transport_fields" != *$'\t'* ]]; then
+    printf 'transport identity did not contain two tab-separated fields\n' >&2
+    return 2
+  fi
+  local expected_bytes="${transport_fields%%$'\t'*}"
+  local expected_hash="${transport_fields#*$'\t'}"
+  if [[ "$expected_hash" == *$'\t'* ]]; then
+    printf 'transport identity contained extra fields\n' >&2
+    return 2
+  fi
   "${SSH[@]}" srun --jobid="$job_id" --overlap -N1 -n1 \
     cat "/tmp/shimmy-agent-python-$job_id/result.sha256" \
     | receive_bounded_stdin "$temp_dir/result.sha256" 256

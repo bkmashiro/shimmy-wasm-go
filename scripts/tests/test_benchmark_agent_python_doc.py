@@ -218,6 +218,12 @@ class AgentPythonDoCLauncherTests(unittest.TestCase):
         self.assertIn('if ! mkdir -m 0700 -- "$root"', body)
         self.assertNotIn('[[ -e "$root" ]]', body)
 
+    def test_pull_avoids_process_substitution_heredoc_on_macos_bash(self) -> None:
+        text = LAUNCHER.read_text(encoding="utf-8")
+        body = text.split("pull_result() {", 1)[1].split("ack_result() {", 1)[0]
+        self.assertIn('transport_fields="$(python3 -', body)
+        self.assertNotIn('read -r expected_bytes expected_hash < <(', body)
+
     def test_gateway_defaults_to_gpucluster2_and_reuses_control_connection(self) -> None:
         text = LAUNCHER.read_text(encoding="utf-8")
         self.assertIn('GATEWAY="${SHIMMY_DOC_GATEWAY:-gpucluster2}"', text)
