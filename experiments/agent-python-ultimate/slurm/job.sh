@@ -174,6 +174,11 @@ for name, record in files.items():
         raise SystemExit(f"input manifest mismatch for {name}")
 PY
 
+# The safe extractor deliberately creates regular files with private 0600
+# permissions. Restore execute permission only after the signed manifest and
+# every extracted byte have been verified.
+chmod 0700 "$input_dir/agent-python-ultimate"
+
 plan_seed_args=()
 IFS= read -r plan_seed <"$input_dir/plan-seed.txt"
 if [[ ! "$plan_seed" =~ ^[1-9][0-9]*$ ]]; then

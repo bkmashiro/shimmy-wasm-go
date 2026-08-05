@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GATEWAY="${SHIMMY_DOC_GATEWAY:-shell2}"
+GATEWAY="${SHIMMY_DOC_GATEWAY:-gpucluster2}"
 CONTROL_PATH="${SHIMMY_DOC_CONTROL_PATH:-$HOME/.ssh/cm-%C}"
 SSH=(ssh -o BatchMode=yes -o ControlMaster=auto -o ControlPersist=15m -o ControlPath="$CONTROL_PATH" "$GATEWAY")
 SCP=(scp -q -o BatchMode=yes -o ControlMaster=auto -o ControlPersist=15m -o ControlPath="$CONTROL_PATH")

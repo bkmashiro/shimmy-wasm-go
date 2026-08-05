@@ -116,10 +116,10 @@ scripts/prepare-agent-python-doc-bundle.sh \
 runner and plan preview from `git archive`, and compares the committed config,
 Slurm script, safe extractor, and all bundle hashes before any SSH action.
 
-Tomorrow's manual sequence is `upload -> submit -> stage`; the controller connects
-to `shell2` by default and reuses a 15-minute SSH ControlMaster, while `sbatch`
-requests the DoC GPU partition/node. Result validation, pull, ACK, and controller
-cleanup remain separate:
+The manual sequence is `upload -> submit -> stage`; the controller connects to
+the `gpucluster2` Slurm submission host by default and reuses a 15-minute SSH
+ControlMaster. Result validation, pull, ACK, and controller cleanup remain
+separate:
 
 ```bash
 RUN_ID=agent-python-YYYYMMDDthhmmssz-<8-hex>

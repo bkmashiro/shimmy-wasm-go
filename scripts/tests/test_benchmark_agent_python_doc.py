@@ -158,6 +158,10 @@ class AgentPythonDoCLauncherTests(unittest.TestCase):
         self.assertIn('input-files.sha256', text)
         self.assertIn('cmp -- "$input_dir/plan.preview.json"', text)
         self.assertIn('safe-extract-tar-zst.py', text)
+        runner_mode = 'chmod 0700 "$input_dir/agent-python-ultimate"'
+        runner_plan = '"$input_dir/agent-python-ultimate" plan'
+        self.assertIn(runner_mode, text)
+        self.assertLess(text.index(runner_mode), text.index(runner_plan))
         self.assertNotIn('--max-output-size=', text)
         self.assertNotIn("/vol/bitbucket", text)
 
@@ -214,9 +218,9 @@ class AgentPythonDoCLauncherTests(unittest.TestCase):
         self.assertIn('if ! mkdir -m 0700 -- "$root"', body)
         self.assertNotIn('[[ -e "$root" ]]', body)
 
-    def test_gateway_defaults_to_shell2_and_reuses_control_connection(self) -> None:
+    def test_gateway_defaults_to_gpucluster2_and_reuses_control_connection(self) -> None:
         text = LAUNCHER.read_text(encoding="utf-8")
-        self.assertIn('GATEWAY="${SHIMMY_DOC_GATEWAY:-shell2}"', text)
+        self.assertIn('GATEWAY="${SHIMMY_DOC_GATEWAY:-gpucluster2}"', text)
         self.assertIn("ControlMaster=auto", text)
         self.assertIn("ControlPersist=15m", text)
         self.assertIn('ControlPath="$CONTROL_PATH"', text)
