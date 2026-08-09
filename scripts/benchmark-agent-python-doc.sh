@@ -112,7 +112,28 @@ render_sbatch() {
 }
 
 render_canary_sbatch() {
-  render_sbatch_with_time "$1" 02:00:00
+  local run_id="$1"
+  local job_script="${2:-$(gateway_root "$run_id")/job.sh}"
+  validate_run_id "$run_id"
+  case "$job_script" in
+    /tmp/shimmy-agent-python-controller-"$run_id"/job.sh) ;;
+    *) printf 'unsafe remote job script: %q\n' "$job_script" >&2; return 2 ;;
+  esac
+  printf '%s\n' \
+    "sbatch" \
+    "--parsable" \
+    "--partition=long" \
+    "--nodelist=gpuvm19" \
+    "--nodes=1" \
+    "--ntasks=1" \
+    "--cpus-per-task=6" \
+    "--mem=48G" \
+    "--time=02:00:00" \
+    "--export=NIL" \
+    "--chdir=/tmp" \
+    "--output=/tmp/shimmy-agent-python-%j-slurm.out" \
+    "--job-name=${run_id}" \
+    "$job_script"
 }
 
 submit_job_with_time() {
@@ -148,7 +169,27 @@ submit_job() {
 }
 
 submit_canary_job() {
-  submit_job_with_time "$1" 02:00:00
+  local run_id="$1"
+  local root
+  root="$(gateway_root "$run_id")"
+  "${SSH[@]}" bash -s -- "$root" "$run_id" <<'REMOTE'
+set -euo pipefail
+root="$1"
+run_id="$2"
+case "$root" in /tmp/shimmy-agent-python-controller-agent-python-*) ;; *) exit 2 ;; esac
+[[ "$(cat "$root/.controller-owner")" == "$run_id" ]]
+(
+  cd "$root"
+  sha256sum -c bundle.sha256 >/dev/null
+  bash -n job.sh
+)
+sbatch --parsable \
+  --partition=long --nodelist=gpuvm19 --nodes=1 --ntasks=1 \
+  --cpus-per-task=6 --mem=48G \
+  --time=02:00:00 --export=NIL --chdir=/tmp \
+  --output=/tmp/shimmy-agent-python-%j-slurm.out \
+  --job-name="$run_id" "$root/job.sh"
+REMOTE
 }
 
 upload_bundle() {

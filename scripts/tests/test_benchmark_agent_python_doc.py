@@ -134,17 +134,19 @@ class AgentPythonDoCLauncherTests(unittest.TestCase):
         self.assertNotIn('test -d "/tmp/shimmy-agent-python-$job_id"', stage_body)
         self.assertIn("sleep 5\nfor name in input.tar.zst", stage_body)
 
-    def test_render_canary_sbatch_uses_same_node_with_two_hour_bound(self) -> None:
+    def test_render_canary_sbatch_uses_idle_cpu_capacity_with_two_hour_bound(self) -> None:
         result = self.run_launcher(
             "render-canary-sbatch", "agent-python-20260727t001500z-a1b2c3d4"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         rendered = result.stdout
-        self.assertIn("--partition=a16", rendered)
-        self.assertIn("--nodelist=gpuvm36", rendered)
+        self.assertIn("--partition=long", rendered)
+        self.assertIn("--nodelist=gpuvm19", rendered)
         self.assertIn("--cpus-per-task=6", rendered)
         self.assertIn("--mem=48G", rendered)
         self.assertIn("--time=02:00:00", rendered)
+        self.assertNotIn("--gres=", rendered)
+        self.assertNotIn("--partition=a16", rendered)
         self.assertNotIn("--time=2-12:00:00", rendered)
 
     def test_slurm_job_uses_tmp_checksum_pull_ack_protocol(self) -> None:
