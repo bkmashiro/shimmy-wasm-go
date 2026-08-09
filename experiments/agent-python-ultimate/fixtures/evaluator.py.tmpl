@@ -6,7 +6,7 @@ PREPARED_SENTINEL = {{ .Sentinel }}
 CPU_PROFILE = "{{ .CPUProfile }}"
 RANDOM_SEED = {{ .Seed }}
 
-# The Agent Python runtime executes this trusted script during runtime_prepare.
+# The Python Reactor runtime executes this artifact-owned script during runtime_prepare.
 # Therefore these allocations are part of the prepared baseline and are restored
 # by snapshot lifecycles between calls.
 arena = bytearray(ARENA_BYTES)
@@ -87,8 +87,13 @@ def _arena_sample_digest():
     return _digest(sample)
 
 
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
     global guest_invocation_count
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
+    response = payload.get("response")
+    answer = payload.get("answer")
+    params = payload.get("params")
     guest_invocation_count += 1
     params = params or {}
 

@@ -16,6 +16,7 @@ const (
 )
 
 var canonicalCampaignOrder = []string{
+	"current-canary",
 	"capability",
 	"direct-startup",
 	"http-full-boot",
@@ -35,6 +36,7 @@ var canonicalCampaignOrder = []string{
 }
 
 var campaignRowCounts = map[string]int{
+	"current-canary":        10,
 	"capability":            4,
 	"direct-startup":        100,
 	"http-full-boot":        40,
@@ -241,6 +243,8 @@ func stableHashBucket(input string, mod int) int {
 
 func expandCampaign(name string) []PlanRow {
 	switch name {
+	case "current-canary":
+		return currentCanaryRows()
 	case "capability":
 		return capabilityRows()
 	case "direct-startup":
@@ -288,6 +292,35 @@ func baseRow(campaign string, lifecycle Lifecycle) PlanRow {
 		CacheState:       "warm",
 		Surface:          "direct",
 	}
+}
+
+func currentCanaryRows() []PlanRow {
+	rows := make([]PlanRow, 0, campaignRowCounts["current-canary"])
+	add := func(lifecycle Lifecycle, concurrency, arenaMiB, dirtyBps, repeat int, surface, pattern string) {
+		concurrencyValue, arenaValue, dirtyValue := concurrency, arenaMiB, dirtyBps
+		row := baseRow("current-canary", lifecycle)
+		row.Pool, row.PreparedCapacity, row.Repeat = concurrency, concurrency, repeat
+		row.Concurrency = &concurrencyValue
+		row.ArenaMiB, row.DirtyBps = &arenaValue, &dirtyValue
+		row.DirtyPattern, row.PayloadShape, row.Surface = pattern, "flat-ascii", surface
+		if lifecycle == LifecycleSnapshotMemcpy {
+			row.SnapshotSelected = "memcpy"
+		}
+		if lifecycle == LifecycleSnapshotCow {
+			row.SnapshotSelected = "cow"
+		}
+		rows = append(rows, row)
+	}
+
+	for _, lifecycle := range []Lifecycle{LifecycleFresh, LifecycleSingleUse, LifecycleSnapshotMemcpy, LifecycleSnapshotCow} {
+		add(lifecycle, 1, 32, 100, 5, "direct", "sparse")
+	}
+	for _, lifecycle := range []Lifecycle{LifecycleSnapshotMemcpy, LifecycleSnapshotCow} {
+		add(lifecycle, 4, 32, 100, 12, "direct", "fixed-seed-random")
+		add(lifecycle, 1, 64, 1000, 5, "direct", "fixed-seed-random")
+		add(lifecycle, 1, 32, 100, 5, "http", "sparse")
+	}
+	return rows
 }
 
 func capabilityRows() []PlanRow {

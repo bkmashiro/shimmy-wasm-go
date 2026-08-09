@@ -1,0 +1,9 @@
+{
+  "schema": "agent-python-ultimate-config/v1",
+  "seed": 20260809,
+  "allow_large_plan": false,
+  "max_rows": 10,
+  "campaigns": {
+    "current-canary": {"enabled": true}
+  }
+}

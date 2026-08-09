@@ -364,10 +364,10 @@ func runWorkerRequest(
 			cancelFault()
 		}
 		faultPayload := workerCallPayload(faultResponse, faultParams)
-		faultResult, faultErr := executeWorkerCall(faultCtx, dispatcher, faultPayload, httpServer, httpClient)
+		_, faultErr := executeWorkerCall(faultCtx, dispatcher, faultPayload, httpServer, httpClient)
 		cancelFault()
 		expectFaultError := faultName != "memory-growth" || row.Lifecycle == LifecycleSnapshotMemcpy || row.Lifecycle == LifecycleSnapshotCow
-		faultObserved := faultErr != nil || structuredPythonError(faultResult)
+		faultObserved := faultErr != nil
 		if expectFaultError && !faultObserved {
 			sample.Duration = time.Since(started)
 			sample.Error = fmt.Sprintf("fault %q unexpectedly succeeded", faultName)
@@ -439,13 +439,6 @@ func executeWorkerCall(
 		return nil, fmt.Errorf("decode HTTP response: %w", err)
 	}
 	return decoded, nil
-}
-
-func structuredPythonError(response map[string]any) bool {
-	result, _ := response["result"].(map[string]any)
-	_, hasCode := result["error_code"]
-	_, hasType := result["error_type"]
-	return hasCode || hasType
 }
 
 func intValue(value *int) int {

@@ -179,6 +179,47 @@ func TestFocusedLifecycleTailPlanSeparatesLifecycleAndConcurrency(t *testing.T) 
 	}
 }
 
+func TestCurrentSourceCanaryPlanIsBoundedAndCoversLifecycleBurstDirtyAndHTTP(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("configs", "current-source-canary.json"))
+	require.NoError(t, err)
+	cfg, err := ParsePlanConfig(raw)
+	require.NoError(t, err)
+
+	plan, err := ExpandPlanFromConfig(cfg, PlanExpandOptions{})
+	require.NoError(t, err)
+	require.Len(t, plan.Rows, 10)
+
+	lifecycles := map[Lifecycle]bool{}
+	burst := 0
+	httpRows := 0
+	dirtyPoints := map[int]bool{}
+	arenas := map[int]bool{}
+	for _, row := range plan.Rows {
+		assert.Equal(t, "current-canary", row.Campaign)
+		lifecycles[row.Lifecycle] = true
+		if row.Concurrency != nil && *row.Concurrency == 4 {
+			burst++
+		}
+		if row.Surface == "http" {
+			httpRows++
+		}
+		if row.DirtyBps != nil {
+			dirtyPoints[*row.DirtyBps] = true
+		}
+		if row.ArenaMiB != nil {
+			arenas[*row.ArenaMiB] = true
+		}
+	}
+	assert.Equal(t, map[Lifecycle]bool{
+		LifecycleFresh: true, LifecycleSingleUse: true,
+		LifecycleSnapshotMemcpy: true, LifecycleSnapshotCow: true,
+	}, lifecycles)
+	assert.Equal(t, 2, burst)
+	assert.Equal(t, 2, httpRows)
+	assert.Equal(t, map[int]bool{100: true, 1000: true}, dirtyPoints)
+	assert.Equal(t, map[int]bool{32: true, 64: true}, arenas)
+}
+
 func TestStableWorkerSeedDependsOnPlanSeedAndRowIdentity(t *testing.T) {
 	a := stableWorkerSeed(100, "row-a")
 	assert.Equal(t, a, stableWorkerSeed(100, "row-a"))

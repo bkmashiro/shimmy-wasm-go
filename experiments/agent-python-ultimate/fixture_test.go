@@ -94,7 +94,8 @@ func TestEvaluatorTemplateEmbeddedOutsideSourceTree(t *testing.T) {
 	t.Chdir(t.TempDir())
 	fixture, err := RenderEvaluatorTemplate(EvaluatorTemplateData{ArenaMiB: 1, Seed: 7, CPUProfile: "none"})
 	require.NoError(t, err)
-	assert.Contains(t, fixture, "def evaluation_function")
+	assert.Contains(t, fixture, "def dispatch(method, payload):")
+	assert.NotContains(t, fixture, "def evaluation_function")
 }
 
 func TestEvaluatorTemplateContainsFixtureContractMarkers(t *testing.T) {
@@ -106,7 +107,8 @@ func TestEvaluatorTemplateContainsFixtureContractMarkers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Contains(t, fixture, "guest_invocation_count")
-	assert.Contains(t, fixture, "def evaluation_function(response, answer, params=None):")
+	assert.Contains(t, fixture, "def dispatch(method, payload):")
+	assert.Contains(t, fixture, `if method != "eval":`)
 	assert.NotContains(t, fixture, "def runtime_prepare")
 	assert.Contains(t, fixture, "arena_digest")
 	assert.Contains(t, fixture, "output_digest")
