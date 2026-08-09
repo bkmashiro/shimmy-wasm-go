@@ -198,50 +198,31 @@ Suggested explanation:
 
 ## Target Lambda Feedback reactor configuration
 
-After a replacement artifact passes handoff, the common `python-reactor` Lambda
-Feedback layout uses the WASM backend plus an explicit profile:
+Build the evaluator-owned adapter before Shimmy startup:
+
+```bash
+python3 tools/lf-bundle-python/lf_bundle_python.py \
+  --root /var/task \
+  --adapter-root examples/lambda-feedback-adapter \
+  --eval-entrypoint evaluation_function.evaluation:evaluation_function \
+  --preview-entrypoint evaluation_function.preview:preview_function \
+  --include-root /opt/lf-puredeps \
+  --out /tmp/evaluator.bundle.py
+```
+
+Then pass only prepared artifact paths to the sandbox:
 
 ```bash
 FUNCTION_INTERFACE=wasm
-FUNCTION_WASM_PROFILE=agent-python
-FUNCTION_WASM_MODULE=/opt/agent-python/agent-python-runtime-numpy-core.wasm
-FUNCTION_WASM_MANIFEST=/opt/agent-python/manifest.json
-FUNCTION_LF_ROOT=/var/task
+FUNCTION_WASM_PROFILE=python-reactor
+FUNCTION_WASM_MODULE=/opt/python-reactor/python-reactor.wasm
+FUNCTION_WASM_MANIFEST=/opt/python-reactor/manifest.json
+FUNCTION_WASM_PYTHON_SCRIPT=/tmp/evaluator.bundle.py
 ```
 
-Shimmy uses these defaults:
-
-```text
-eval entrypoint    = evaluation_function.evaluation:evaluation_function
-preview entrypoint = evaluation_function.preview:preview_function  # if preview.py exists
-adapter root       = examples/lambda-feedback-adapter
-bundler            = tools/lf-bundle-python/lf_bundle_python.py
-bundle output      = temporary file
-```
-
-For more complex packages, keep the environment small with one JSON config file:
-
-```bash
-FUNCTION_INTERFACE=wasm
-FUNCTION_WASM_PROFILE=agent-python
-FUNCTION_WASM_MODULE=/opt/agent-python/agent-python-runtime-numpy-core.wasm
-FUNCTION_WASM_MANIFEST=/opt/agent-python/manifest.json
-FUNCTION_LF_CONFIG=/var/task/shimmy-lf.json
-```
-
-Example `shimmy-lf.json`:
-
-```json
-{
-  "root": "/var/task",
-  "eval": "evaluation_function.evaluation:evaluation_function",
-  "preview": "evaluation_function.preview:preview_function",
-  "include_roots": ["/opt/lf-puredeps"]
-}
-```
-
-Explicit `FUNCTION_LF_*` environment variables override values from
-`FUNCTION_LF_CONFIG`.
+Shimmy has no LF defaults, package discovery, or `FUNCTION_LF_*` startup mode.
+The optional producer owns its explicit method mapping; the sandbox calls only
+`dispatch(method, payload)`.
 
 ## If something goes wrong live
 
@@ -288,8 +269,8 @@ scripts/demo-wasm.sh
   evaluators should use Pyodide today.
 - Do not claim automatic import/requirements routing. Runtime selection is
   explicit via `FUNCTION_INTERFACE`.
-- Agent Python runs through the same wazero adapter on macOS and Linux; do not
-  substitute Pyodide or a native Python process and label it Agent Python.
+- Python Reactor runs through the same wazero adapter on macOS and Linux; do not
+  substitute Pyodide or a native Python process and label it Python Reactor.
 - The checked-in bundle is acceptance evidence, not proof of a deployed image.
 - Do not claim zpoline/soft-dirty as the Lambda path. Current probe results favor
   `userfaultfd` write-protect support over soft-dirty/zpoline assumptions.

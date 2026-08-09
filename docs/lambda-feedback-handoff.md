@@ -1,52 +1,43 @@
-# Lambda Feedback on Agent Python
+# Lambda Feedback producer for Python Reactor
 
 **Status:** integrated and covered by local/remote consumer gates. This page does
 not claim that a deployment or image has been published.
 
 The runtime and artifact evidence is documented in
-[Agent Python runtime integration](python-runtime-handoff.md).
+[Python Reactor runtime integration](python-runtime-handoff.md).
 
 ## Deployment shape
 
-Use the explicit `agent-python` profile, the pinned Wasm, its manifest, and a
-Lambda Feedback package root:
+First run the optional evaluator-specific producer. Shimmy itself does not
+inspect Lambda Feedback package structure:
+
+```bash
+python3 tools/lf-bundle-python/lf_bundle_python.py \
+  --root /var/task \
+  --adapter-root examples/lambda-feedback-adapter \
+  --eval-entrypoint evaluation_function.evaluation:evaluation_function \
+  --preview-entrypoint evaluation_function.preview:preview_function \
+  --out /tmp/evaluator.bundle.py
+```
 
 ```bash
 FUNCTION_INTERFACE=wasm
-FUNCTION_WASM_PROFILE=agent-python
-FUNCTION_WASM_MODULE=/opt/agent-python/agent-python-runtime-numpy-core.wasm
-FUNCTION_WASM_MANIFEST=/opt/agent-python/manifest.json
-FUNCTION_LF_ROOT=/var/task
+FUNCTION_WASM_PROFILE=python-reactor
+FUNCTION_WASM_MODULE=/opt/python-reactor/python-reactor.wasm
+FUNCTION_WASM_MANIFEST=/opt/python-reactor/manifest.json
+FUNCTION_WASM_PYTHON_SCRIPT=/tmp/evaluator.bundle.py
 ```
 
-For a non-standard layout, use one config file:
-
-```bash
-FUNCTION_LF_CONFIG=/var/task/shimmy-lf.json
-```
-
-```json
-{
-  "root": "/var/task",
-  "eval": "evaluation_function.evaluation:evaluation_function",
-  "preview": "evaluation_function.preview:preview_function",
-  "include_roots": ["/opt/lf-puredeps"]
-}
-```
-
-Explicit `FUNCTION_LF_*` variables override config-file values.
-
-At startup Shimmy runs `tools/lf-bundle-python/lf_bundle_python.py` once and
-passes the generated trusted script to `runtime_prepare`. Bundling is not done
-per request. Each request still receives a fresh, single-use runtime instance.
+The generated script owns `dispatch(method, payload)` and may map LF methods to
+its package functions. Shimmy forwards method and payload without knowing that
+mapping. Unknown methods raise the adapter's explicit structured error.
 
 ## Filesystem and dependency boundary
 
-Agent Python exposes no Host filesystem paths to guest code. Consequently:
+Python Reactor exposes no Host filesystem paths to guest code. Consequently:
 
-- `FUNCTION_LF_INCLUDE_ROOTS` is supported: Shimmy reads and embeds those
-  pure-Python dependencies before sandbox startup;
-- `FUNCTION_LF_SYS_PATH` and `sys_path` in `FUNCTION_LF_CONFIG` are rejected;
+- repeatable producer `--include-root` paths embed pure-Python dependencies
+  before sandbox startup;
 - no `ctypes`, NumPy random, FFT, filesystem, or import polyfills are injected;
 - NumPy core and linear algebra come from the pinned runtime artifact;
 - SciPy-heavy evaluators remain on the Pyodide route.
@@ -94,9 +85,15 @@ scripts/demo-python-examples.sh reactor-only
 The new runtime is cross-platform under wazero; these commands do not require a
 Linux-only loader or a Docker fallback.
 
-## Compatibility names
+## Compatibility check
 
-`FUNCTION_WASM_PROFILE=python-reactor`, `reactor-python`, and the legacy
-`FUNCTION_INTERFACE=reactor-python` are accepted as configuration aliases. All
-of them route to the same Agent Python v1 implementation. New configurations
-should use `FUNCTION_INTERFACE=wasm` and `FUNCTION_WASM_PROFILE=agent-python`.
+```bash
+python3 tools/python-reactor-check/python_reactor_check.py --source /var/task
+go run ./cmd/shimmy-artifact-check --profile python-reactor \
+  --module /opt/python-reactor/python-reactor.wasm \
+  --manifest /opt/python-reactor/manifest.json
+```
+
+Static source findings are advisory warnings. Artifact, manifest, ABI, or
+explicit build-command failures are errors. Neither checker rewrites evaluator
+business logic.

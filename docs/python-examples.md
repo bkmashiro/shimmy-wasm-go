@@ -5,13 +5,12 @@ interfaces. Runtime selection remains explicit.
 
 | Route | Directory | Runtime | Use when | Boundary |
 |---|---|---|---|---|
-| Plain Python | `examples/eval-python/` | `agent-python` | Standard-library and bundled pure-Python evaluators | Fresh single-use instance; no Host filesystem/network. |
-| NumPy core | `examples/eval-numpy/` | `agent-python` | NumPy core/linalg workloads covered by the pinned artifact | NumPy 2.5.1; binary128 canary covered; SciPy absent. |
+| Plain Python | `examples/eval-python/` | `python-reactor` | Standard-library and bundled pure-Python evaluators | Fresh single-use instance; no Host filesystem/network. |
+| NumPy core | `examples/eval-numpy/` | `python-reactor` | NumPy core/linalg workloads covered by the pinned artifact | NumPy 2.5.1; binary128 canary covered; SciPy absent. |
 | SciPy/heavy Python | `examples/eval-scipy/` | Pyodide | SciPy/Pandas/scikit-learn and broad Emscripten packages | Heavier subprocess compatibility lane. |
-| Lambda Feedback package | fixtures + adapter | Agent Python or Pyodide | Package-style `evaluation_function` modules | Boilerplate is Agent-qualified; other rows follow `capability-matrix.json`. |
-| Legacy resident Python | `examples/eval-python/` | `python-wasm` | Historical comparison only | Persistent interpreter state can leak. |
+| Lambda Feedback package | fixtures + external producer | Python Reactor or Pyodide | Package-style evaluators built into a `dispatch` script before startup | Boilerplate is runtime-qualified; other rows follow `capability-matrix.json`. |
 
-Agent Python smoke:
+Python Reactor smoke:
 
 ```bash
 scripts/smoke-python-reactor-handoff.sh direct
@@ -28,13 +27,11 @@ scripts/demo-lambda-feedback-fixtures.sh pyodide-boilerplate
 
 Notes:
 
-- `agent-python` is the canonical profile. `python-reactor`, `reactor-python`, and
-  the legacy interface spelling are aliases.
+- `python-reactor` is the only Python Reactor profile; select it under
+  `FUNCTION_INTERFACE=wasm`.
 - The bundle is manifest- and checksum-bound under
   `build/python-reactor/artifacts/`.
 - The Host denies `agent_runtime_v1.host_call`; no capability is granted.
-- Lambda Feedback pure-Python dependencies must be embedded at startup with
-  `FUNCTION_LF_INCLUDE_ROOTS`. Guest `sys.path` mounts are rejected.
+- Lambda Feedback pure-Python dependencies are embedded by the optional producer
+  with repeatable `--include-root` arguments before Shimmy startup.
 - SciPy remains a Pyodide route.
-- `python-wasm` remains an independent legacy resident path and is not evidence
-  for Agent Python isolation.

@@ -1,8 +1,8 @@
-# Agent Python runtime integration
+# Python Reactor runtime integration
 
-Shimmy now consumes the clean Agent Python Runtime v1 ABI for the explicit
-`agent-python` profile. `python-reactor` and `reactor-python` remain accepted as
-configuration aliases, but they route to the same new implementation.
+Shimmy consumes Python Reactor Runtime v1 only through the explicit
+`FUNCTION_INTERFACE=wasm` and `FUNCTION_WASM_PROFILE=python-reactor` selection.
+Evaluator-specific packaging happens before Shimmy startup.
 
 This is an integration result, not a deployment or release claim.
 
@@ -24,8 +24,9 @@ target:          wasm32-wasip1 reactor
 ```
 
 `SHA256SUMS` binds the Wasm, manifest, SBOM, notices, and extension selection.
-Shimmy verifies the artifact filename, size, SHA-256, target, execution model,
-required exports, and custom imports before compiling it.
+Shimmy verifies the artifact filename, size, SHA-256, target, and execution model,
+then compiles it and compares the manifest with the actual exports, imports, and
+function signatures before instantiation.
 
 The producer guest implementation last changed at signed commit
 `9a571176bb58c2d6a41312d01ad789abdd6b82e6`. The neutral v1 contract copied into
@@ -60,30 +61,28 @@ Lifecycle:
 
 `FUNCTION_WASM_SNAPSHOT_MODE` selects `memcpy`, `soft-dirty`, `mprotect`,
 `uffd`, or `cow` for the `snapshot` lifecycle. Linux COW owns one sealed image
-per Agent Python slot so independently randomized CPython baselines are never
+per Python Reactor slot so independently randomized CPython baselines are never
 silently collapsed into one shared hash seed. Non-Linux COW requests explicitly
 fall back to full copy. Snapshot strategies restore WASM linear memory only;
 Shimmy keeps `agent_runtime_v1.host_call` denied, so this evaluator profile has
 no request-owned Host capability state to claim as restored.
 
-## Compatibility surface
+## Evaluator-owned dispatch
 
-Existing evaluator scripts remain valid:
+The prepared script exports one generic entrypoint:
 
 ```python
-def evaluation_function(response, answer, params=None):
-    return {"is_correct": response == answer}
-
-
-def preview_function(response, answer, params=None):
-    return {"preview": str(response)}
+def dispatch(method, payload):
+    # The evaluator owns any method registry or business mapping.
+    ...
 ```
 
-The script is passed through `runtime_prepare`. Shimmy generates a fixed call
-wrapper; request methods are data, not interpolated Python source. `preview`
-falls back to `evaluation_function`, matching the previous public behavior.
-Python exceptions are mapped back to the existing structured result fields:
-`error`, `error_code`, `error_type`, and `traceback`.
+The script is passed through `runtime_prepare`. Shimmy calls
+`dispatch(method, payload)` with the exact method and structure-preserving
+payload. It does not know `eval`, `preview`, `chat`, callable names, or framework
+registries. Missing or unknown methods do not fall back. Python exceptions are
+returned as typed execution errors preserving code, message, error type, and
+traceback instead of being disguised as successful result objects.
 
 ## Sandbox boundary
 

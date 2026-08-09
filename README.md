@@ -290,7 +290,7 @@ wolframscript -file evaluation.wl /tmp/shimmy/abc/request-data-123 /tmp/shimmy/a
 #### WASM (`--interface wasm`)
 
 The generic WASM backend consumes an already-built `.wasm` module that exposes
-Shimmy's `alloc` / `evaluate` ABI. Shimmy does not compile source code at request
+Shimmy's language-neutral `alloc` / `dispatch` ABI. Shimmy does not compile source code at request
 time and should not infer a runtime from language imports or dependency files.
 
 Language-specific work belongs in build/deployment recipes:
@@ -301,8 +301,23 @@ Language-specific work belongs in build/deployment recipes:
 - Python: CPython-WASI reactor or Pyodide compatibility lane, depending on package needs
 - JavaScript: future Javy/QuickJS-to-WASI integration with a Shimmy ABI adapter
 
-For Python fast-path deployments, prefer `FUNCTION_INTERFACE=wasm` plus
-`FUNCTION_WASM_PROFILE=agent-python`, a manifest-bound Agent Python Runtime
-artifact, and an evaluator script or startup bundle. `python-reactor`,
-`reactor-python`, and `FUNCTION_INTERFACE=reactor-python` remain configuration
-aliases, not separate legacy loaders.
+For Python Reactor deployments, use `FUNCTION_INTERFACE=wasm` plus
+`FUNCTION_WASM_PROFILE=python-reactor`, a manifest-bound runtime artifact, and a
+prepared evaluator script that defines `dispatch(method, payload)`. Shimmy does
+not inspect Python packages or map `eval`, `preview`, `chat`, or future methods.
+An evaluator-specific producer may build the script outside Shimmy; production
+startup receives only the resulting artifact paths.
+
+Validate caller-produced artifacts before deployment:
+
+```bash
+go run ./cmd/shimmy-artifact-check --profile generic --module evaluator.wasm
+go run ./cmd/shimmy-artifact-check --profile python-reactor \
+  --module python-reactor.wasm --manifest manifest.json
+python3 tools/python-reactor-check/python_reactor_check.py --source evaluator/
+```
+
+The Python source checker is advisory. Static findings warn that WASM behavior
+may differ from native execution; malformed artifacts, ABI mismatches, failed
+explicit build commands, and capabilities that the runtime cannot provide are
+errors.
