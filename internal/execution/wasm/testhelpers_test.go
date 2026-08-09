@@ -5,15 +5,15 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	"github.com/stretchr/testify/require"
 )
 
 // echoWasmBytes reads the pre-compiled echo fixture from testdata/echo.wasm.
 // The fixture is a minimal WASM module that:
 //   - exports a bump-allocator alloc(size i32) i32
-//   - exports evaluate(req_ptr i32, req_len i32) i32 that always returns the
+//   - exports dispatch(req_ptr i32, req_len i32) i32 that always returns the
 //     fixed JSON {"ok":true} as a 4-byte LE length-prefixed blob
 //
 // The WAT source is kept alongside the binary at testdata/echo.wat for

@@ -27,8 +27,8 @@ func alloc(size int32) int32 {
 	return int32(uintptr(unsafe.Pointer(&reqBuf[0])))
 }
 
-//go:wasmexport evaluate
-func evaluate(reqPtr int32, reqLen int32) int32 {
+//go:wasmexport dispatch
+func dispatch(reqPtr int32, reqLen int32) int32 {
 	_ = reqPtr
 
 	var req struct {

@@ -26,7 +26,7 @@ def _parse(s: str) -> np.ndarray:
     return np.array([float(x.strip()) for x in s.split(",")])
 
 
-def evaluation_function(response, answer, params=None):
+def _evaluate(response, answer, params=None):
     params = params or {}
     rtol = float(params.get("rtol", 1e-5))
     atol = float(params.get("atol", 1e-8))
@@ -63,7 +63,7 @@ def evaluation_function(response, answer, params=None):
     return {"is_correct": correct, "feedback": feedback}
 
 
-def preview_function(response, answer, params=None):
+def _preview(response, answer, params=None):
     try:
         resp_arr = _parse(str(response))
         preview_str = f"Submitted array: {resp_arr.tolist()}"
@@ -71,3 +71,13 @@ def preview_function(response, answer, params=None):
         preview_str = f"Could not parse response: {exc}"
 
     return {"preview": preview_str}
+
+def dispatch(method, payload):
+    """Evaluator-owned method routing for the Python Reactor ABI."""
+    if not isinstance(payload, dict):
+        raise TypeError("payload must be a dict")
+    if method == "eval":
+        return _evaluate(payload.get("response"), payload.get("answer"), payload.get("params", {}))
+    if method == "preview":
+        return _preview(payload.get("response"), payload.get("answer"), payload.get("params", {}))
+    raise LookupError("unsupported method: " + str(method))

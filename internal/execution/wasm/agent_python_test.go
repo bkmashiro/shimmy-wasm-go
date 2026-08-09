@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 	"go.uber.org/zap"
 )
 
@@ -99,14 +100,85 @@ func TestVerifyAgentPythonArtifactRejectsDigestDrift(t *testing.T) {
 	assert.Contains(t, err.Error(), "artifact SHA-256")
 }
 
-func TestBuildAgentPythonRunRequestPreservesShimmyMethodAndParams(t *testing.T) {
-	params := map[string]any{
-		"response": "42",
-		"answer":   "42",
-		"params":   map[string]any{"tolerance": 1e-9},
+func validPythonReactorModuleShape() pythonReactorModuleShape {
+	i32 := api.ValueTypeI32
+	return pythonReactorModuleShape{
+		Exports: map[string]pythonReactorFunctionSignature{
+			"_initialize":     {},
+			"runtime_init":    {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
+			"runtime_prepare": {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
+			"alloc":           {Params: []api.ValueType{i32}, Results: []api.ValueType{i32}},
+			"dealloc":         {Params: []api.ValueType{i32}},
+			"execute":         {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
+		},
+		ExportedMemories: map[string]struct{}{"memory": {}},
+		Imports: map[pythonReactorImport]struct{}{
+			{Module: "agent_runtime_v1", Name: "host_call"}:      {},
+			{Module: "wasi_snapshot_preview1", Name: "fd_write"}: {},
+		},
+	}
+}
+
+func validPythonReactorArtifactContract() *AgentPythonArtifact {
+	return &AgentPythonArtifact{
+		DeclaredExports: []string{"memory", "_initialize", "runtime_init", "runtime_prepare", "alloc", "dealloc", "execute"},
+		DeclaredImports: []pythonReactorImport{
+			{Module: "agent_runtime_v1", Name: "host_call"},
+			{Module: "wasi_snapshot_preview1", Name: "fd_write"},
+		},
+	}
+}
+
+func TestVerifyPythonReactorModuleShapeAcceptsExactContract(t *testing.T) {
+	err := verifyPythonReactorModuleShape(validPythonReactorModuleShape(), validPythonReactorArtifactContract())
+	require.NoError(t, err)
+}
+
+func TestVerifyPythonReactorModuleShapeRejectsUndeclaredActualImport(t *testing.T) {
+	shape := validPythonReactorModuleShape()
+	shape.Imports[pythonReactorImport{Module: "wasi_snapshot_preview1", Name: "sock_send"}] = struct{}{}
+
+	err := verifyPythonReactorModuleShape(shape, validPythonReactorArtifactContract())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `actual import "wasi_snapshot_preview1"."sock_send" is not declared by manifest`)
+}
+
+func TestVerifyPythonReactorModuleShapeRejectsWrongDispatchABISignature(t *testing.T) {
+	shape := validPythonReactorModuleShape()
+	shape.Exports["execute"] = pythonReactorFunctionSignature{
+		Params:  []api.ValueType{api.ValueTypeI64},
+		Results: []api.ValueType{api.ValueTypeI32},
 	}
 
-	request, err := buildAgentPythonRunRequest("shimmy-run-1", "preview", params, "")
+	err := verifyPythonReactorModuleShape(shape, validPythonReactorArtifactContract())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `export "execute" has ABI`)
+}
+
+func TestPinnedPythonReactorArtifactMatchesActualModule(t *testing.T) {
+	modulePath := filepath.Join("..", "..", "..", "build", "python-reactor", "artifacts", "agent-python-runtime-numpy-core.wasm")
+	manifestPath := filepath.Join("..", "..", "..", "build", "python-reactor", "artifacts", "manifest.json")
+	artifact, err := verifyAgentPythonArtifact(modulePath, manifestPath)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	runtime := wazero.NewRuntime(ctx)
+	t.Cleanup(func() { require.NoError(t, runtime.Close(ctx)) })
+	compiled, err := runtime.CompileModule(ctx, artifact.WasmBytes)
+	require.NoError(t, err)
+
+	require.NoError(t, verifyCompiledPythonReactorArtifact(compiled, artifact))
+}
+
+func TestBuildAgentPythonRunRequestPreservesArbitraryMethodAndOpaqueParams(t *testing.T) {
+	params := map[string]any{
+		"messages":     []any{map[string]any{"role": "USER", "content": "hello"}},
+		"future_field": map[string]any{"nested": true},
+	}
+
+	request, err := buildAgentPythonRunRequest("shimmy-run-1", "future/chat.v2", params, "")
 
 	require.NoError(t, err)
 	var envelope struct {
@@ -117,8 +189,12 @@ func TestBuildAgentPythonRunRequestPreservesShimmyMethodAndParams(t *testing.T) 
 	require.NoError(t, json.Unmarshal(request, &envelope))
 	assert.Equal(t, "shimmy-run-1", envelope.RunID)
 	assert.Equal(t, agentPythonPreparedCall, envelope.Code)
-	assert.Equal(t, "preview", envelope.Inputs["method"])
-	assert.Equal(t, "42", envelope.Inputs["params"].(map[string]any)["response"])
+	assert.Equal(t, "future/chat.v2", envelope.Inputs["method"])
+	assert.Equal(t, params["messages"], envelope.Inputs["params"].(map[string]any)["messages"])
+	assert.Equal(t, true, envelope.Inputs["params"].(map[string]any)["future_field"].(map[string]any)["nested"])
+	assert.Contains(t, envelope.Code, `dispatch(inputs["method"], inputs["params"])`)
+	assert.NotContains(t, envelope.Code, "evaluation_function")
+	assert.NotContains(t, envelope.Code, "preview_function")
 	assert.NotContains(t, envelope.Code, "shimmy-run-1")
 }
 
@@ -127,7 +203,7 @@ func TestBuildAgentPythonRunRequestSupportsExplicitPreloadOff(t *testing.T) {
 		"shimmy-run-2",
 		"eval",
 		map[string]any{"response": "1", "answer": "1"},
-		"def evaluation_function(response, answer, params=None): return {'is_correct': True}",
+		"def dispatch(method, payload): return {'method': method, 'payload': payload}",
 	)
 
 	require.NoError(t, err)
@@ -135,28 +211,32 @@ func TestBuildAgentPythonRunRequestSupportsExplicitPreloadOff(t *testing.T) {
 	require.NoError(t, json.Unmarshal(request, &envelope))
 	inputs := envelope["inputs"].(map[string]any)
 	assert.Contains(t, envelope["code"], `inputs["script"]`)
-	assert.Contains(t, inputs["script"], "def evaluation_function")
+	assert.Contains(t, inputs["script"], "def dispatch(method, payload)")
+	assert.NotContains(t, envelope["code"], "evaluation_function")
+	assert.NotContains(t, envelope["code"], "preview_function")
 }
 
-func TestDecodeAgentPythonResponseMapsSuccessToLegacyResult(t *testing.T) {
-	payload := []byte(`{"status":"ok","result":{"is_correct":true},"receipts":[],"metrics":{"capability_calls":0,"result_bytes":19},"error":null}`)
+func TestDecodeAgentPythonResponsePreservesSuccessResult(t *testing.T) {
+	payload := []byte(`{"status":"ok","result":{"opaque":{"value":true}},"receipts":[],"metrics":{"capability_calls":0,"result_bytes":25},"error":null}`)
 
 	result, err := decodeAgentPythonResponse(payload)
 
 	require.NoError(t, err)
-	assert.Equal(t, true, result["is_correct"])
+	assert.Equal(t, map[string]any{"value": true}, result["opaque"])
 }
 
-func TestDecodeAgentPythonResponseMapsPythonExceptionToLegacyStructuredResult(t *testing.T) {
-	payload := []byte(`{"status":"error","result":null,"receipts":[],"metrics":{"capability_calls":0,"result_bytes":0},"error":{"code":"python_exception","message":"bad value","error_type":"ValueError","traceback":"trace"}}`)
+func TestDecodeAgentPythonResponseReturnsTypedExecutionError(t *testing.T) {
+	payload := []byte(`{"status":"error","result":null,"receipts":[],"metrics":{"capability_calls":0,"result_bytes":0},"error":{"code":"unsupported_method","message":"method is not registered","error_type":"UnsupportedMethod","traceback":"trace"}}`)
 
 	result, err := decodeAgentPythonResponse(payload)
 
-	require.NoError(t, err)
-	assert.Equal(t, "bad value", result["error"])
-	assert.Equal(t, "ValueError", result["error_type"])
-	assert.Equal(t, "trace", result["traceback"])
-	assert.Equal(t, "python_exception", result["error_code"])
+	require.Nil(t, result)
+	var executionErr *PythonReactorExecutionError
+	require.ErrorAs(t, err, &executionErr)
+	assert.Equal(t, "unsupported_method", executionErr.Code)
+	assert.Equal(t, "method is not registered", executionErr.Message)
+	assert.Equal(t, "UnsupportedMethod", executionErr.ErrorType)
+	assert.Equal(t, "trace", executionErr.Traceback)
 }
 
 func TestAgentPythonRejectsHostFilesystemPaths(t *testing.T) {
@@ -179,7 +259,13 @@ func TestAgentPythonDispatcherRealNumPyArtifactCompatibility(t *testing.T) {
 import numpy as np
 _counter = 0
 
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
+    if method == "preview":
+        return {"preview": f"response={payload.get('response')}"}
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
+    response = payload.get("response")
+    answer = payload.get("answer")
     global _counter
     _counter += 1
     if response == "explode":
@@ -200,9 +286,6 @@ def evaluation_function(response, answer, params=None):
             "counter": _counter,
         }
     return {"is_correct": response == answer, "counter": _counter}
-
-def preview_function(response, answer, params=None):
-    return {"preview": f"response={response}"}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 
@@ -245,13 +328,18 @@ def preview_function(response, answer, params=None):
 	assert.Equal(t, "response=3.14", preview["result"].(map[string]any)["preview"])
 
 	failure, err := dispatcher.Send(context.Background(), "eval", map[string]any{"response": "explode", "answer": "x"})
-	require.NoError(t, err)
-	assert.Equal(t, "ValueError", failure["result"].(map[string]any)["error_type"])
+	require.Nil(t, failure)
+	var failureErr *PythonReactorExecutionError
+	require.ErrorAs(t, err, &failureErr)
+	assert.Equal(t, "ValueError", failureErr.ErrorType)
+	assert.Equal(t, "expected explosion", failureErr.Message)
 
 	denied, err := dispatcher.Send(context.Background(), "eval", map[string]any{"response": "host_call", "answer": "x"})
-	require.NoError(t, err)
-	assert.Equal(t, "RuntimeError", denied["result"].(map[string]any)["error_type"])
-	assert.Contains(t, denied["result"].(map[string]any)["error"], "Host capability bridge rejected")
+	require.Nil(t, denied)
+	var deniedErr *PythonReactorExecutionError
+	require.ErrorAs(t, err, &deniedErr)
+	assert.Equal(t, "RuntimeError", deniedErr.ErrorType)
+	assert.Contains(t, deniedErr.Message, "Host capability bridge rejected")
 
 	binary128, err := dispatcher.Send(context.Background(), "eval", map[string]any{"response": "float128", "answer": "x"})
 	require.NoError(t, err)
@@ -349,10 +437,12 @@ func TestAgentPythonDispatcherRealNumPyCOWRestoresState(t *testing.T) {
 	script := `
 _counter = 0
 
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
     global _counter
     _counter += 1
-    return {"counter": _counter, "is_correct": response == answer}
+    return {"counter": _counter, "is_correct": payload.get("response") == payload.get("answer")}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 
@@ -402,12 +492,15 @@ func TestAgentPythonDispatcherCowTimeoutDiscardsInvalidatedSlot(t *testing.T) {
 	script := `
 import sys
 
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
+    response = payload.get("response")
     if response == "loop":
         print("cow-timeout-loop-entered", file=sys.stderr, flush=True)
         while True:
             pass
-    return {"is_correct": response == answer}
+    return {"is_correct": response == payload.get("answer")}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 
@@ -492,10 +585,12 @@ func TestAgentPythonDispatcherSingleUsePreparedRefillsNeverServedCandidates(t *t
 	script := `
 _counter = 0
 
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
     global _counter
     _counter += 1
-    return {"counter": _counter, "is_correct": response == answer}
+    return {"counter": _counter, "is_correct": payload.get("response") == payload.get("answer")}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 
@@ -567,11 +662,14 @@ func TestAgentPythonDispatcherTimeoutDoesNotPoisonRuntime(t *testing.T) {
 
 	scriptPath := filepath.Join(t.TempDir(), "timeout.py")
 	script := `
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
+    response = payload.get("response")
     if response == "loop":
         while True:
             pass
-    return {"is_correct": response == answer}
+    return {"is_correct": response == payload.get("answer")}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 

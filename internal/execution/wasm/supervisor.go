@@ -137,7 +137,7 @@ func (s *wasmSupervisor) Start(ctx context.Context) error {
 	return nil
 }
 
-// Send calls the guest's evaluate function, then restores linear memory from
+// Send calls the guest's dispatch function, then restores linear memory from
 // the snapshot so the next request starts from a clean state.
 func (s *wasmSupervisor) Send(
 	ctx context.Context,

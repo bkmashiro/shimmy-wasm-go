@@ -26,20 +26,6 @@ func writeTempScript(t *testing.T, content string) string {
 	return f.Name()
 }
 
-func writeFakeBundler(t *testing.T, logPath string) string {
-	t.Helper()
-	bundler := filepath.Join(t.TempDir(), "fake_bundler.py")
-	require.NoError(t, os.WriteFile(bundler, []byte(`
-import pathlib
-import sys
-args = sys.argv[1:]
-pathlib.Path("`+logPath+`").write_text("\n".join(args))
-out = pathlib.Path(args[args.index("--out") + 1])
-out.write_text("def evaluation_function(response, answer, params=None):\n    return {'is_correct': True}\n")
-`), 0o755))
-	return bundler
-}
-
 func TestNewDispatcher_Wasm_GenericProfile_DefaultsToGenericAndErrorsOnMissingModulePath(t *testing.T) {
 	t.Setenv("FUNCTION_WASM_PROFILE", "")
 
@@ -96,20 +82,33 @@ func TestNewDispatcher_Wasm_UnknownProfileErrorsWithValidValues(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unsupported FUNCTION_WASM_PROFILE "ultra-bad-profile"`)
 	assert.Contains(t, err.Error(), "generic")
-	assert.Contains(t, err.Error(), "agent-python")
 	assert.Contains(t, err.Error(), "python-reactor")
-	assert.Contains(t, err.Error(), "reactor-python")
+	assert.NotContains(t, err.Error(), "agent-python")
 }
 
-func TestNewDispatcher_ReactorPythonInterface_IgnoresWasmProfile(t *testing.T) {
-	t.Setenv("FUNCTION_WASM_PROFILE", "python-reactor")
+func TestNewDispatcher_Wasm_LegacyEvaluatorNamedProfileIsRejected(t *testing.T) {
+	t.Setenv("FUNCTION_WASM_PROFILE", "agent-python")
 
+	_, err := execution.NewDispatcher(execution.Params{
+		Context: context.Background(),
+		Config: execution.Config{
+			Supervisor: supervisor.Config{IO: supervisor.IOConfig{Interface: supervisor.WasmIO}},
+		},
+		Log: zap.NewNop(),
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unsupported FUNCTION_WASM_PROFILE "agent-python"`)
+	assert.Contains(t, err.Error(), "python-reactor")
+}
+
+func TestNewDispatcher_LegacyReactorPythonInterfaceIsRejected(t *testing.T) {
 	_, err := execution.NewDispatcher(execution.Params{
 		Context: context.Background(),
 		Config: execution.Config{
 			Supervisor: supervisor.Config{
 				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
+					Interface: supervisor.IOInterface("reactor-python"),
 				},
 			},
 		},
@@ -117,8 +116,7 @@ func TestNewDispatcher_ReactorPythonInterface_IgnoresWasmProfile(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "unsupported FUNCTION_WASM_PROFILE")
-	assert.Contains(t, err.Error(), "PythonScriptPath")
+	assert.Contains(t, err.Error(), `unsupported execution interface "reactor-python"`)
 }
 
 func TestNewDispatcher_PyodideScriptModeRequiresScriptEnv(t *testing.T) {
@@ -164,7 +162,8 @@ func TestNewDispatcher_PyodidePackageModeAcceptsEnvironmentConfig(t *testing.T) 
 // that an explicitly selected reactor-python interface takes the reactor path
 // and fails with a ModulePath error (not a node/pyodide error).
 func TestNewDispatcher_ReactorPython_ExplicitInterface_EmptyModulePath(t *testing.T) {
-	script := writeTempScript(t, "import numpy as np\n\ndef evaluation_function(r, a, p):\n    return r == a\n")
+	t.Setenv("FUNCTION_WASM_PROFILE", "python-reactor")
+	script := writeTempScript(t, "def dispatch(method, payload):\n    return {'method': method, 'payload': payload}\n")
 
 	t.Setenv("FUNCTION_WASM_PYTHON_SCRIPT", script)
 	// Ensure FUNCTION_PYODIDE_RUNNER is cleared — it won't be reached anyway.
@@ -175,7 +174,7 @@ func TestNewDispatcher_ReactorPython_ExplicitInterface_EmptyModulePath(t *testin
 		Config: execution.Config{
 			Supervisor: supervisor.Config{
 				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
+					Interface: supervisor.WasmIO,
 				},
 				// Leave StartParams.Cmd empty → reactor-python runner will fail
 				// with "ModulePath must be set".
@@ -189,71 +188,18 @@ func TestNewDispatcher_ReactorPython_ExplicitInterface_EmptyModulePath(t *testin
 		"error should be the reactor-python WASM config error, not a node/pyodide error")
 }
 
-func TestNewDispatcher_ReactorPython_RejectsPackageEntrypoints(t *testing.T) {
-	t.Setenv("FUNCTION_PYODIDE_ROOT", t.TempDir())
-	t.Setenv("FUNCTION_PYODIDE_EVAL_ENTRYPOINT", "evaluation_function.evaluation:evaluation_function")
-	t.Setenv("FUNCTION_WASM_PYTHON_SCRIPT", writeTempScript(t, "def evaluation_function(r, a, p):\n    return {'is_correct': True}\n"))
-
-	_, err := execution.NewDispatcher(execution.Params{
-		Context: context.Background(),
-		Config: execution.Config{
-			Supervisor: supervisor.Config{
-				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
-				},
-			},
-		},
-		Log: zap.NewNop(),
-	})
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "reactor-python does not support package-style Lambda Feedback entrypoints yet")
-	assert.Contains(t, err.Error(), "FUNCTION_INTERFACE=pyodide")
-}
-
-func TestNewDispatcher_AgentPythonRejectsRuntimeSysPath(t *testing.T) {
+func TestNewDispatcher_ReactorPythonIgnoresEvaluatorPackagingEnvironment(t *testing.T) {
+	t.Setenv("FUNCTION_WASM_PROFILE", "python-reactor")
+	script := writeTempScript(t, "def dispatch(method, payload):\n    return {'method': method, 'payload': payload}\n")
+	t.Setenv("FUNCTION_WASM_PYTHON_SCRIPT", script)
 	t.Setenv("FUNCTION_LF_ROOT", t.TempDir())
-	t.Setenv("FUNCTION_LF_SYS_PATH", "/opt/runtime-deps.zip")
+	t.Setenv("FUNCTION_LF_BUNDLER", filepath.Join(t.TempDir(), "must-not-run"))
 
 	_, err := execution.NewDispatcher(execution.Params{
 		Context: context.Background(),
 		Config: execution.Config{
 			Supervisor: supervisor.Config{
-				IO: supervisor.IOConfig{Interface: supervisor.ReactorPythonIO},
-			},
-		},
-		Log: zap.NewNop(),
-	})
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not expose Host filesystem paths")
-	assert.Contains(t, err.Error(), "FUNCTION_LF_INCLUDE_ROOTS")
-}
-
-func TestNewDispatcher_ReactorPython_BundlesLambdaFeedbackPackageAtStartup(t *testing.T) {
-	root := t.TempDir()
-	adapterRoot := t.TempDir()
-	out := filepath.Join(t.TempDir(), "generated.bundle.py")
-	logPath := filepath.Join(t.TempDir(), "bundler.args")
-	bundler := writeFakeBundler(t, logPath)
-
-	t.Setenv("FUNCTION_LF_ROOT", root)
-	t.Setenv("FUNCTION_LF_EVAL_ENTRYPOINT", "evaluation_function.evaluation:evaluation_function")
-	t.Setenv("FUNCTION_LF_PREVIEW_ENTRYPOINT", "evaluation_function.preview:preview_function")
-	t.Setenv("FUNCTION_LF_ADAPTER_ROOT", adapterRoot)
-	t.Setenv("FUNCTION_LF_BUNDLER", bundler)
-	t.Setenv("FUNCTION_LF_BUNDLE_OUT", out)
-	t.Setenv("FUNCTION_LF_INCLUDE_ROOTS", "/opt/puredeps")
-
-	_, err := execution.NewDispatcher(execution.Params{
-		Context: context.Background(),
-		Config: execution.Config{
-			Supervisor: supervisor.Config{
-				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
-				},
-				// Leave StartParams.Cmd empty; after bundling, reactor startup should
-				// still fail on the missing/unsupported wasm module path.
+				IO: supervisor.IOConfig{Interface: supervisor.WasmIO},
 			},
 		},
 		Log: zap.NewNop(),
@@ -261,99 +207,7 @@ func TestNewDispatcher_ReactorPython_BundlesLambdaFeedbackPackageAtStartup(t *te
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ModulePath")
-	require.FileExists(t, out, "reactor package mode should generate the bundle before reactor startup")
-	argsBytes, readErr := os.ReadFile(logPath)
-	require.NoError(t, readErr)
-	args := string(argsBytes)
-	assert.Contains(t, args, "--root\n"+root)
-	assert.Contains(t, args, "--adapter-root\n"+adapterRoot)
-	assert.Contains(t, args, "--eval-entrypoint\nevaluation_function.evaluation:evaluation_function")
-	assert.Contains(t, args, "--preview-entrypoint\nevaluation_function.preview:preview_function")
-	assert.Contains(t, args, "--include-root\n/opt/puredeps")
-	assert.Contains(t, args, "--out\n"+out)
-}
-
-func TestNewDispatcher_ReactorPython_DefaultsLambdaFeedbackEntrypoints(t *testing.T) {
-	root := t.TempDir()
-	adapterRoot := t.TempDir()
-	out := filepath.Join(t.TempDir(), "generated.bundle.py")
-	logPath := filepath.Join(t.TempDir(), "bundler.args")
-	bundler := writeFakeBundler(t, logPath)
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "evaluation_function"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "evaluation_function", "preview.py"), []byte("def preview_function():\n    return None\n"), 0o644))
-
-	t.Setenv("FUNCTION_LF_ROOT", root)
-	t.Setenv("FUNCTION_LF_ADAPTER_ROOT", adapterRoot)
-	t.Setenv("FUNCTION_LF_BUNDLER", bundler)
-	t.Setenv("FUNCTION_LF_BUNDLE_OUT", out)
-
-	_, err := execution.NewDispatcher(execution.Params{
-		Context: context.Background(),
-		Config: execution.Config{
-			Supervisor: supervisor.Config{
-				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
-				},
-			},
-		},
-		Log: zap.NewNop(),
-	})
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ModulePath")
-	require.FileExists(t, out, "reactor package mode should generate the bundle before reactor startup")
-	argsBytes, readErr := os.ReadFile(logPath)
-	require.NoError(t, readErr)
-	args := string(argsBytes)
-	assert.Contains(t, args, "--root\n"+root)
-	assert.Contains(t, args, "--adapter-root\n"+adapterRoot)
-	assert.Contains(t, args, "--eval-entrypoint\nevaluation_function.evaluation:evaluation_function")
-	assert.Contains(t, args, "--preview-entrypoint\nevaluation_function.preview:preview_function")
-}
-
-func TestNewDispatcher_ReactorPython_LoadsLambdaFeedbackConfigFileWithEnvOverride(t *testing.T) {
-	root := t.TempDir()
-	adapterRoot := t.TempDir()
-	out := filepath.Join(t.TempDir(), "generated.bundle.py")
-	logPath := filepath.Join(t.TempDir(), "bundler.args")
-	bundler := writeFakeBundler(t, logPath)
-	configPath := filepath.Join(t.TempDir(), "shimmy-lf.json")
-	require.NoError(t, os.WriteFile(configPath, []byte(`{
-  "root": "`+root+`",
-  "eval": "package.eval:evaluate",
-  "preview": "package.preview:preview",
-  "adapter_root": "`+adapterRoot+`",
-  "bundler": "`+bundler+`",
-  "out": "`+out+`",
-  "include_roots": ["/opt/from-config"]
-}`), 0o644))
-
-	t.Setenv("FUNCTION_LF_CONFIG", configPath)
-	t.Setenv("FUNCTION_LF_EVAL_ENTRYPOINT", "override.module:eval")
-
-	_, err := execution.NewDispatcher(execution.Params{
-		Context: context.Background(),
-		Config: execution.Config{
-			Supervisor: supervisor.Config{
-				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
-				},
-			},
-		},
-		Log: zap.NewNop(),
-	})
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ModulePath")
-	require.FileExists(t, out, "reactor package mode should generate the bundle before reactor startup")
-	argsBytes, readErr := os.ReadFile(logPath)
-	require.NoError(t, readErr)
-	args := string(argsBytes)
-	assert.Contains(t, args, "--root\n"+root)
-	assert.Contains(t, args, "--adapter-root\n"+adapterRoot)
-	assert.Contains(t, args, "--eval-entrypoint\noverride.module:eval")
-	assert.Contains(t, args, "--preview-entrypoint\npackage.preview:preview")
-	assert.Contains(t, args, "--include-root\n/opt/from-config")
+	assert.NotContains(t, err.Error(), "Lambda Feedback")
 }
 
 // TestNewDispatcher_ReactorPython_EmptyScriptPath verifies that when
@@ -361,6 +215,7 @@ func TestNewDispatcher_ReactorPython_LoadsLambdaFeedbackConfigFileWithEnvOverrid
 // scan entirely and falls through to the reactor-python path, which then
 // fails because PythonScriptPath is required.
 func TestNewDispatcher_ReactorPython_EmptyScriptPath(t *testing.T) {
+	t.Setenv("FUNCTION_WASM_PROFILE", "python-reactor")
 	t.Setenv("FUNCTION_WASM_PYTHON_SCRIPT", "")
 
 	_, err := execution.NewDispatcher(execution.Params{
@@ -368,7 +223,7 @@ func TestNewDispatcher_ReactorPython_EmptyScriptPath(t *testing.T) {
 		Config: execution.Config{
 			Supervisor: supervisor.Config{
 				IO: supervisor.IOConfig{
-					Interface: supervisor.ReactorPythonIO,
+					Interface: supervisor.WasmIO,
 				},
 			},
 		},

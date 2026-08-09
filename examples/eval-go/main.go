@@ -21,12 +21,12 @@ func alloc(size int32) int32 {
 	return int32(uintptr(unsafe.Pointer(&reqBuf[0])))
 }
 
-// evaluate reads the JSON request from reqBuf, processes it, and writes
+// dispatch reads the JSON request from reqBuf, processes it, and writes
 // a length-prefixed JSON response to respBuf.
 // Returns a pointer to respBuf[0] (4-byte LE length + JSON body).
 //
-//go:wasmexport evaluate
-func evaluate(reqPtr int32, reqLen int32) int32 {
+//go:wasmexport dispatch
+func dispatch(reqPtr int32, reqLen int32) int32 {
 	_ = reqPtr // we know it's &reqBuf[0]
 
 	// Parse request envelope: {"method": "...", "params": {...}}

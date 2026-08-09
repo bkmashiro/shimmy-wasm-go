@@ -56,7 +56,7 @@ func runWasmExample(t *testing.T, wasmPath string) {
 
 	mem := mod.Memory()
 	allocFn := mod.ExportedFunction("alloc")
-	evalFn := mod.ExportedFunction("evaluate")
+	dispatchFn := mod.ExportedFunction("dispatch")
 
 	call := func(t *testing.T, method string, params map[string]any) evalResult {
 		t.Helper()
@@ -75,10 +75,10 @@ func runWasmExample(t *testing.T, wasmPath string) {
 			t.Fatal("mem.Write failed")
 		}
 
-		// evaluate
-		res, err = evalFn.Call(ctx, uint64(ptr), uint64(len(reqBytes)))
+		// dispatch
+		res, err = dispatchFn.Call(ctx, uint64(ptr), uint64(len(reqBytes)))
 		if err != nil {
-			t.Fatalf("evaluate: %v", err)
+			t.Fatalf("dispatch: %v", err)
 		}
 		respPtr := uint32(res[0])
 

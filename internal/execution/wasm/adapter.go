@@ -11,7 +11,7 @@
 //	    the start of the allocation. The host will write the JSON-encoded
 //	    request into this region immediately after the call returns.
 //
-//	evaluate(req_ptr i32, req_len i32) i32
+//	dispatch(req_ptr i32, req_len i32) i32
 //	    Process the JSON request at [req_ptr, req_ptr+req_len). Returns a
 //	    pointer P into guest memory where the response is encoded as:
 //	        bytes [P, P+4)   — uint32 little-endian response length L
@@ -43,26 +43,26 @@ type requestEnvelope struct {
 	Params map[string]any `json:"params"`
 }
 
-// wasmAdapter performs a single evaluate call against a live wazero api.Module.
+// wasmAdapter performs a single opaque dispatch call against a live wazero api.Module.
 // It is stateless and safe to call from one goroutine at a time.
 type wasmAdapter struct {
-	mod     api.Module
-	log     *zap.Logger
-	allocFn api.Function // cached exported "alloc" function (M-4 fix)
-	evalFn  api.Function // cached exported "evaluate" function (M-4 fix)
+	mod        api.Module
+	log        *zap.Logger
+	allocFn    api.Function // cached exported "alloc" function (M-4 fix)
+	dispatchFn api.Function // cached exported "dispatch" function
 }
 
 func newWasmAdapter(mod api.Module, log *zap.Logger) *wasmAdapter {
 	return &wasmAdapter{
-		mod:     mod,
-		log:     log.Named("adapter_wasm"),
-		allocFn: mod.ExportedFunction("alloc"),
-		evalFn:  mod.ExportedFunction("evaluate"),
+		mod:        mod,
+		log:        log.Named("adapter_wasm"),
+		allocFn:    mod.ExportedFunction("alloc"),
+		dispatchFn: mod.ExportedFunction("dispatch"),
 	}
 }
 
 // send marshals (method, data) into JSON, writes it into the guest's linear
-// memory via alloc, calls evaluate, and reads back the length-prefixed
+// memory via alloc, calls dispatch, and reads back the length-prefixed
 // response.
 func (a *wasmAdapter) send(
 	ctx context.Context,
@@ -114,23 +114,23 @@ func (a *wasmAdapter) send(
 		)
 	}
 
-	// 4. Call evaluate (cached lookup — M-4 fix).
-	if a.evalFn == nil {
-		return nil, fmt.Errorf("wasm: guest module does not export 'evaluate'")
+	// 4. Call the language- and method-agnostic dispatch ABI.
+	if a.dispatchFn == nil {
+		return nil, fmt.Errorf("wasm: guest module does not export 'dispatch'")
 	}
 
-	a.log.Debug("calling evaluate",
+	a.log.Debug("calling dispatch",
 		zap.String("method", method),
 		zap.Uint64("req_ptr", reqPtr),
 		zap.Uint64("req_len", reqLen),
 	)
 
-	evalRes, err := a.evalFn.Call(ctx, reqPtr, reqLen)
+	dispatchRes, err := a.dispatchFn.Call(ctx, reqPtr, reqLen)
 	if err != nil {
-		return nil, fmt.Errorf("wasm: evaluate: %w", err)
+		return nil, fmt.Errorf("wasm: dispatch: %w", err)
 	}
 
-	resPtr := uint32(evalRes[0])
+	resPtr := uint32(dispatchRes[0])
 
 	// 5. Read the 4-byte little-endian length prefix.
 	lenBytes, ok := mem.Read(resPtr, 4)

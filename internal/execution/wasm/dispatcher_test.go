@@ -19,7 +19,7 @@ import (
 // echoModulePath returns the absolute path to the pre-compiled echo.wasm test
 // fixture. The fixture is a minimal guest module that always returns
 // {"ok":true} regardless of the request, which lets us test the host-side Go
-// code (alloc call, memory write, evaluate call, length-prefix parsing, JSON
+// code (alloc call, memory write, dispatch call, length-prefix parsing, JSON
 // unmarshal) without implementing a full language runtime in WAT.
 func echoModulePath(t *testing.T) string {
 	t.Helper()
@@ -325,7 +325,7 @@ func TestDispatcher_MissingModule(t *testing.T) {
 
 // TestSupervisor_MemoryRestored sends two sequential requests through the same
 // supervisor and verifies that both succeed with the same response. This
-// exercises the snapshot/restore cycle: after the first evaluate the bump
+// exercises the snapshot/restore cycle: after the first dispatch the bump
 // allocator's heap_top is advanced, but restoreSnapshot rewinds memory so the
 // second call starts from the exact same state.
 func TestSupervisor_MemoryRestored(t *testing.T) {

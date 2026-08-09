@@ -9,7 +9,7 @@ usage() {
   cat >&2 <<'EOF'
 usage: scripts/verify-python-reactor-artifact.sh [artifact.wasm [manifest.json]]
 
-Verifies the pinned Agent Python Runtime bundle, manifest binding, and actual
+Verifies the pinned Python Reactor runtime bundle, manifest binding, and actual
 Wasm v1 imports/exports. No artifact is downloaded implicitly.
 EOF
 }
@@ -170,5 +170,5 @@ print(f"profile:  {manifest['artifact_profile']}")
 print(f"commit:   {build['repository_commit']}")
 print(f"sha256:   {digest}")
 print("exports:  " + ", ".join(sorted(required)))
-print("PASS: Agent Python Runtime bundle verified")
+print("PASS: Python Reactor runtime bundle verified")
 PY

@@ -2,7 +2,7 @@
 ;;
 ;; Implements:
 ;;   alloc(size i32) i32   — bump allocator; heap pointer stored at mem[0..3]
-;;   evaluate(req_ptr i32, req_len i32) i32
+;;   dispatch(req_ptr i32, req_len i32) i32
 ;;       — ignores input; always returns fixed response {"ok":true}
 ;;         as a length-prefixed blob: [4-byte LE uint32 len][JSON bytes]
 ;;
@@ -31,11 +31,11 @@
     (local.get $ptr)
   )
 
-  ;; evaluate(req_ptr i32, req_len i32) i32
+  ;; dispatch(req_ptr i32, req_len i32) i32
   ;; Returns pointer P where:
   ;;   mem[P .. P+4)    = little-endian uint32 length (11)
   ;;   mem[P+4 .. P+15) = {"ok":true}
-  (func (export "evaluate") (param $req_ptr i32) (param $req_len i32) (result i32)
+  (func (export "dispatch") (param $req_ptr i32) (param $req_len i32) (result i32)
     (local $resp_ptr i32)
     ;; resp_ptr = i32.load(mem[0])
     (local.set $resp_ptr (i32.load (i32.const 0)))

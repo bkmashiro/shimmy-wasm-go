@@ -4,7 +4,7 @@ CFLAGS    := --target=wasm32-wasip1 \
              --sysroot=$(WASI_SDK)/share/wasi-sysroot \
              -O2 -Wall \
              -Wl,--export=alloc \
-             -Wl,--export=evaluate \
+             -Wl,--export=dispatch \
              -Wl,--no-entry
 
 .PHONY: all clean

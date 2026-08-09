@@ -71,7 +71,7 @@ int32_t alloc(int32_t /*size*/) {
 /// Called with (ptr, len) of the JSON request payload in linear memory.
 /// Returns a pointer to [4-byte LE length][JSON response body] in resp_buf.
 __attribute__((visibility("default")))
-int32_t evaluate(int32_t /*req_ptr*/, int32_t req_len) {
+int32_t dispatch(int32_t /*req_ptr*/, int32_t req_len) {
     std::string_view src(reinterpret_cast<char*>(req_buf),
                          static_cast<size_t>(req_len));
 

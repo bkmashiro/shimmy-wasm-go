@@ -25,7 +25,7 @@ pub unsafe extern "C" fn alloc(_size: i32) -> i32 {
 /// Called by the host with the pointer and length of the JSON request in linear memory.
 /// Returns a pointer to a 4-byte LE length prefix followed by the JSON response body.
 #[no_mangle]
-pub unsafe extern "C" fn evaluate(_req_ptr: i32, req_len: i32) -> i32 {
+pub unsafe extern "C" fn dispatch(_req_ptr: i32, req_len: i32) -> i32 {
     let req_bytes = &REQ_BUF[..req_len as usize];
 
     let json = match serde_json::from_slice::<Value>(req_bytes) {

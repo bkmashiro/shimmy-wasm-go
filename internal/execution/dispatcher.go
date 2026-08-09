@@ -2,11 +2,8 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -56,16 +53,8 @@ func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
 	}
 
 	newReactorPythonDispatcher := func() (dispatcher.Dispatcher, error) {
-		if os.Getenv("FUNCTION_PYODIDE_ROOT") != "" || os.Getenv("FUNCTION_PYODIDE_EVAL_ENTRYPOINT") != "" {
-			return nil, fmt.Errorf("reactor-python does not support package-style Lambda Feedback entrypoints yet; use FUNCTION_INTERFACE=pyodide with FUNCTION_PYODIDE_ROOT, FUNCTION_PYODIDE_EVAL_ENTRYPOINT, optional FUNCTION_PYODIDE_PREVIEW_ENTRYPOINT, and FUNCTION_PYODIDE_ADAPTER")
-		}
-
 		cfg := wasmBaseConfig()
-		pythonScriptPath, err := reactorPythonScriptPath(params.Context)
-		if err != nil {
-			return nil, err
-		}
-		cfg.PythonScriptPath = pythonScriptPath
+		cfg.PythonScriptPath = os.Getenv("FUNCTION_WASM_PYTHON_SCRIPT")
 		d := wasm.NewAgentPythonDispatcher(cfg, params.Log)
 		if err := d.Start(params.Context); err != nil {
 			return nil, err
@@ -82,7 +71,7 @@ func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
 		return d, nil
 	}
 
-	validWasmProfiles := []string{"agent-python", "generic", "python-reactor", "reactor-python"}
+	validWasmProfiles := []string{"generic", "python-reactor"}
 	wasmProfile := strings.ToLower(strings.TrimSpace(os.Getenv("FUNCTION_WASM_PROFILE")))
 
 	switch supervisorCfg.IO.Interface {
@@ -94,24 +83,12 @@ func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
 		switch wasmProfile {
 		case "generic":
 			return newGenericWasmDispatcher()
-		case "agent-python", "python-reactor", "reactor-python":
+		case "python-reactor":
 			return newReactorPythonDispatcher()
 		default:
 			sort.Strings(validWasmProfiles)
 			return nil, fmt.Errorf("unsupported FUNCTION_WASM_PROFILE %q; supported values: %s", wasmProfile, strings.Join(validWasmProfiles, ", "))
 		}
-
-	case supervisor.PythonWasmIO:
-		cfg := wasmBaseConfig()
-		cfg.PythonScriptPath = os.Getenv("FUNCTION_WASM_PYTHON_SCRIPT")
-		d := wasm.NewPythonDispatcher(cfg, params.Log)
-		if err := d.Start(params.Context); err != nil {
-			return nil, err
-		}
-		return d, nil
-
-	case supervisor.ReactorPythonIO:
-		return newReactorPythonDispatcher()
 
 	case supervisor.PyodideIO:
 		// Pyodide uses the rpc dispatcher with stdio transport.
@@ -165,7 +142,7 @@ func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
 			},
 		)
 
-	default:
+	case supervisor.FileIO:
 		return dispatcher.NewPooledDispatcher(
 			dispatcher.PooledDispatcherParams{
 				Config: dispatcher.PooledDispatcherConfig{
@@ -176,95 +153,10 @@ func NewDispatcher(params Params) (dispatcher.Dispatcher, error) {
 				Log:     params.Log,
 			},
 		)
-	}
-}
 
-func reactorPythonScriptPath(ctx context.Context) (string, error) {
-	cfg, packageMode, err := reactorPythonLambdaFeedbackConfig()
-	if err != nil {
-		return "", err
+	default:
+		return nil, fmt.Errorf("unsupported execution interface %q", supervisorCfg.IO.Interface)
 	}
-	if !packageMode {
-		return os.Getenv("FUNCTION_WASM_PYTHON_SCRIPT"), nil
-	}
-	return buildLambdaFeedbackBundle(ctx, cfg)
-}
-
-type lambdaFeedbackConfigFile struct {
-	Root              string   `json:"root"`
-	Eval              string   `json:"eval"`
-	EvalEntrypoint    string   `json:"eval_entrypoint"`
-	Preview           string   `json:"preview"`
-	PreviewEntrypoint string   `json:"preview_entrypoint"`
-	AdapterRoot       string   `json:"adapter_root"`
-	Bundler           string   `json:"bundler"`
-	Python            string   `json:"python"`
-	Out               string   `json:"out"`
-	IncludeRoots      []string `json:"include_roots"`
-	SysPath           []string `json:"sys_path"`
-}
-
-func reactorPythonLambdaFeedbackConfig() (lambdaFeedbackBundleConfig, bool, error) {
-	fileCfg, err := readLambdaFeedbackConfigFile(os.Getenv("FUNCTION_LF_CONFIG"))
-	if err != nil {
-		return lambdaFeedbackBundleConfig{}, false, err
-	}
-
-	root := firstNonEmpty(os.Getenv("FUNCTION_LF_ROOT"), fileCfg.Root)
-	evalEntrypoint := firstNonEmpty(os.Getenv("FUNCTION_LF_EVAL_ENTRYPOINT"), fileCfg.EvalEntrypoint, fileCfg.Eval)
-	packageMode := root != "" || evalEntrypoint != "" || os.Getenv("FUNCTION_LF_CONFIG") != ""
-	if !packageMode {
-		return lambdaFeedbackBundleConfig{}, false, nil
-	}
-	if root == "" {
-		return lambdaFeedbackBundleConfig{}, true, fmt.Errorf("reactor-python Lambda Feedback package mode requires FUNCTION_LF_ROOT")
-	}
-	if evalEntrypoint == "" {
-		evalEntrypoint = "evaluation_function.evaluation:evaluation_function"
-	}
-
-	previewEntrypoint := firstNonEmpty(os.Getenv("FUNCTION_LF_PREVIEW_ENTRYPOINT"), fileCfg.PreviewEntrypoint, fileCfg.Preview)
-	if previewEntrypoint == "" && fileExists(filepath.Join(root, "evaluation_function", "preview.py")) {
-		previewEntrypoint = "evaluation_function.preview:preview_function"
-	}
-
-	includeRoots := fileCfg.IncludeRoots
-	if envIncludeRoots := splitEnvList(os.Getenv("FUNCTION_LF_INCLUDE_ROOTS")); len(envIncludeRoots) > 0 {
-		includeRoots = envIncludeRoots
-	}
-	sysPath := fileCfg.SysPath
-	if envSysPath := splitEnvList(os.Getenv("FUNCTION_LF_SYS_PATH")); len(envSysPath) > 0 {
-		sysPath = envSysPath
-	}
-	if len(sysPath) > 0 {
-		return lambdaFeedbackBundleConfig{}, true, fmt.Errorf("agent-python does not expose Host filesystem paths to the guest; embed dependencies at startup with FUNCTION_LF_INCLUDE_ROOTS")
-	}
-
-	return lambdaFeedbackBundleConfig{
-		Root:              root,
-		EvalEntrypoint:    evalEntrypoint,
-		PreviewEntrypoint: previewEntrypoint,
-		AdapterRoot:       firstNonEmpty(os.Getenv("FUNCTION_LF_ADAPTER_ROOT"), fileCfg.AdapterRoot, "examples/lambda-feedback-adapter"),
-		Bundler:           firstNonEmpty(os.Getenv("FUNCTION_LF_BUNDLER"), fileCfg.Bundler, "tools/lf-bundle-python/lf_bundle_python.py"),
-		Python:            firstNonEmpty(os.Getenv("FUNCTION_LF_BUNDLE_PYTHON"), fileCfg.Python, "python3"),
-		Out:               firstNonEmpty(os.Getenv("FUNCTION_LF_BUNDLE_OUT"), fileCfg.Out),
-		IncludeRoots:      includeRoots,
-	}, true, nil
-}
-
-func readLambdaFeedbackConfigFile(path string) (lambdaFeedbackConfigFile, error) {
-	if path == "" {
-		return lambdaFeedbackConfigFile{}, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return lambdaFeedbackConfigFile{}, fmt.Errorf("reactor-python: read FUNCTION_LF_CONFIG %q: %w", path, err)
-	}
-	var cfg lambdaFeedbackConfigFile
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return lambdaFeedbackConfigFile{}, fmt.Errorf("reactor-python: parse FUNCTION_LF_CONFIG %q: %w", path, err)
-	}
-	return cfg, nil
 }
 
 func firstNonEmpty(values ...string) string {
@@ -274,82 +166,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}
-
-type lambdaFeedbackBundleConfig struct {
-	Root              string
-	EvalEntrypoint    string
-	PreviewEntrypoint string
-	AdapterRoot       string
-	Bundler           string
-	Python            string
-	Out               string
-	IncludeRoots      []string
-}
-
-func buildLambdaFeedbackBundle(ctx context.Context, cfg lambdaFeedbackBundleConfig) (string, error) {
-	if cfg.AdapterRoot == "" {
-		return "", fmt.Errorf("reactor-python Lambda Feedback package mode requires FUNCTION_LF_ADAPTER_ROOT")
-	}
-	out := cfg.Out
-	if out == "" {
-		file, err := os.CreateTemp("", "shimmy-lf-*.bundle.py")
-		if err != nil {
-			return "", fmt.Errorf("reactor-python: create Lambda Feedback bundle temp file: %w", err)
-		}
-		out = file.Name()
-		if err := file.Close(); err != nil {
-			return "", fmt.Errorf("reactor-python: close Lambda Feedback bundle temp file: %w", err)
-		}
-	}
-
-	args := []string{
-		cfg.Bundler,
-		"--root", cfg.Root,
-		"--adapter-root", cfg.AdapterRoot,
-		"--eval-entrypoint", cfg.EvalEntrypoint,
-		"--out", out,
-	}
-	if cfg.PreviewEntrypoint != "" {
-		args = append(args, "--preview-entrypoint", cfg.PreviewEntrypoint)
-	}
-	for _, includeRoot := range cfg.IncludeRoots {
-		args = append(args, "--include-root", includeRoot)
-	}
-
-	cmd := exec.CommandContext(ctx, cfg.Python, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("reactor-python: bundle Lambda Feedback package: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	info, err := os.Stat(out)
-	if err != nil {
-		return "", fmt.Errorf("reactor-python: Lambda Feedback bundle was not written to %q: %w", out, err)
-	}
-	if info.Size() == 0 {
-		return "", fmt.Errorf("reactor-python: Lambda Feedback bundle was empty: %q", out)
-	}
-	return out, nil
-}
-
-func envDefault(name, fallback string) string {
-	if v := os.Getenv(name); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func splitEnvList(raw string) []string {
-	var out []string
-	for _, part := range strings.Split(raw, ",") {
-		if trimmed := strings.TrimSpace(part); trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
 }

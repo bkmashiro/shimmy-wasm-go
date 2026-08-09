@@ -26,7 +26,7 @@ from scipy import stats
 import math
 
 
-def evaluation_function(response, answer, params=None):
+def _evaluate(response, answer, params=None):
     params = params or {}
     mode = params.get("test", "numeric")
 
@@ -94,9 +94,19 @@ def _ttest(response, answer, params):
     }
 
 
-def preview_function(response, answer, params=None):
+def _preview(response, answer, params=None):
     params = params or {}
     if params.get("test") == "ttest":
         samples = params.get("samples", [])
         return {"preview": f"One-sample t-test with {len(samples)} samples."}
     return {"preview": f"SciPy numeric comparison against {answer}."}
+
+def dispatch(method, payload):
+    """Evaluator-owned method routing for the Python Reactor ABI."""
+    if not isinstance(payload, dict):
+        raise TypeError("payload must be a dict")
+    if method == "eval":
+        return _evaluate(payload.get("response"), payload.get("answer"), payload.get("params", {}))
+    if method == "preview":
+        return _preview(payload.get("response"), payload.get("answer"), payload.get("params", {}))
+    raise LookupError("unsupported method: " + str(method))

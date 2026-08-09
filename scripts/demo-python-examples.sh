@@ -80,7 +80,7 @@ PY
 
 ensure_reactor_wasm() {
   if [[ ! -f "${SHIMMY_REACTOR_WASM}" ]]; then
-    echo "error: pinned Agent Python artifact is missing: ${SHIMMY_REACTOR_WASM}" >&2
+    echo "error: pinned Python Reactor artifact is missing: ${SHIMMY_REACTOR_WASM}" >&2
     exit 1
   fi
   printf '%s\n' "${SHIMMY_REACTOR_WASM}"
@@ -88,7 +88,7 @@ ensure_reactor_wasm() {
 
 run_plain_reactor() {
   echo
-  echo "==> Plain Python route: examples/eval-python via agent-python"
+  echo "==> Plain Python route: examples/eval-python via python-reactor"
   echo '    sample: response="3.14159", answer="3.1416", params={"tolerance":0.001}'
 
   local wasm p base log pid resp
@@ -99,7 +99,7 @@ run_plain_reactor() {
     exec env \
       LOG_LEVEL=error \
       FUNCTION_INTERFACE=wasm \
-      FUNCTION_WASM_PROFILE=agent-python \
+      FUNCTION_WASM_PROFILE=python-reactor \
       FUNCTION_WASM_MODULE="${wasm}" \
       FUNCTION_WASM_MANIFEST="${SHIMMY_REACTOR_MANIFEST_PATH}" \
       FUNCTION_WASM_PYTHON_SCRIPT="${ROOT}/examples/eval-python/eval.py" \
@@ -122,14 +122,14 @@ run_numpy_reactor() {
   wasm="$(ensure_reactor_wasm)"
   p="$(port)"; base="http://${HOST}:${p}"; log="${LOG_DIR}/python-numpy.log"; rm -f "${log}"
   echo
-  echo "==> NumPy route: examples/eval-numpy via agent-python"
+  echo "==> NumPy route: examples/eval-numpy via python-reactor"
   echo '    sample: response="1,2,3.000001", answer="1,2,3", params={"rtol":0.00001}'
   (
     cd "${ROOT}"
     exec env \
       LOG_LEVEL=error \
       FUNCTION_INTERFACE=wasm \
-      FUNCTION_WASM_PROFILE=agent-python \
+      FUNCTION_WASM_PROFILE=python-reactor \
       FUNCTION_WASM_MODULE="${wasm}" \
       FUNCTION_WASM_MANIFEST="${SHIMMY_REACTOR_MANIFEST_PATH}" \
       FUNCTION_WASM_PYTHON_SCRIPT="${ROOT}/examples/eval-numpy/eval.py" \
@@ -212,7 +212,7 @@ main() {
     run_plain_reactor
     run_numpy_reactor
     echo
-    echo "✅ Agent Python example demos completed. Logs: ${LOG_DIR}"
+    echo "✅ Python Reactor example demos completed. Logs: ${LOG_DIR}"
     return 0
   fi
 

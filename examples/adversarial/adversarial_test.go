@@ -35,14 +35,14 @@ type attackResult struct {
 	Detail  string `json:"detail"`
 }
 
-// callResult holds either a decoded result or an error from the evaluate call.
+// callResult holds either a decoded result or an error from the dispatch call.
 type callResult struct {
 	res attackResult
 	err error
 }
 
 // loadAndCall loads a wasm module from wasmPath, instantiates it with a
-// timeout-enabled wazero runtime, calls evaluate with an empty request, and
+// timeout-enabled wazero runtime, calls dispatch with an empty request, and
 // returns the parsed response or any error.
 //
 // If the wasm file is missing the test is skipped.
@@ -86,7 +86,7 @@ func loadAndCall(t *testing.T, wasmPath string, timeout time.Duration) (attackRe
 
 	mem := mod.Memory()
 	allocFn := mod.ExportedFunction("alloc")
-	evalFn := mod.ExportedFunction("evaluate")
+	dispatchFn := mod.ExportedFunction("dispatch")
 
 	// Write an empty JSON request — adversarial modules ignore the request body.
 	reqBytes := []byte(`{}`)
@@ -101,7 +101,7 @@ func loadAndCall(t *testing.T, wasmPath string, timeout time.Duration) (attackRe
 		t.Fatal("mem.Write failed")
 	}
 
-	evalRes, err := evalFn.Call(ctx, uint64(ptr), uint64(len(reqBytes)))
+	evalRes, err := dispatchFn.Call(ctx, uint64(ptr), uint64(len(reqBytes)))
 	if err != nil {
 		return attackResult{}, err
 	}
@@ -159,7 +159,7 @@ func TestMemBomb(t *testing.T) {
 	res, err := loadAndCall(t, wasmPath("mem-bomb"), 10*time.Second)
 	if err != nil {
 		// A trap/OOM from the runtime itself counts as blocked.
-		t.Logf("evaluate returned error (counts as blocked): %v", err)
+		t.Logf("dispatch returned error (counts as blocked): %v", err)
 		return
 	}
 	if !res.Blocked {
@@ -169,27 +169,27 @@ func TestMemBomb(t *testing.T) {
 }
 
 // TestCpuBomb verifies that an infinite loop is interrupted by the epoch
-// timeout — the evaluate call must return an error within the deadline.
+// timeout — the dispatch call must return an error within the deadline.
 func TestCpuBomb(t *testing.T) {
 	_, err := loadAndCall(t, wasmPath("cpu-bomb"), 2*time.Second)
 	if err == nil {
-		t.Fatal("cpu-bomb should have been interrupted by context timeout, but evaluate returned nil error")
+		t.Fatal("cpu-bomb should have been interrupted by context timeout, but dispatch returned nil error")
 	}
 	t.Logf("cpu-bomb interrupted as expected: %v", err)
 }
 
 // TestStackBomb verifies that infinite recursion is interrupted by the epoch
-// timeout or results in a trap — either way evaluate must not succeed.
+// timeout or results in a trap — either way dispatch must not succeed.
 func TestStackBomb(t *testing.T) {
 	_, err := loadAndCall(t, wasmPath("stack-bomb"), 2*time.Second)
 	if err == nil {
-		t.Fatal("stack-bomb should have been interrupted or trapped, but evaluate returned nil error")
+		t.Fatal("stack-bomb should have been interrupted or trapped, but dispatch returned nil error")
 	}
 	t.Logf("stack-bomb interrupted/trapped as expected: %v", err)
 }
 
 // assertBlocked is a helper that passes if either:
-// (a) the evaluate call returned an error (wasm trap = blocked), or
+// (a) the dispatch call returned an error (wasm trap = blocked), or
 // (b) the call succeeded and the guest reported blocked:true.
 // It fails only if the call succeeded AND blocked==false (attack got through).
 func assertBlocked(t *testing.T, name string, res attackResult, err error) {
@@ -350,7 +350,7 @@ func TestConcurrentIsolation(t *testing.T) {
 
 			mem := mod.Memory()
 			allocFn := mod.ExportedFunction("alloc")
-			evalFn := mod.ExportedFunction("evaluate")
+			dispatchFn := mod.ExportedFunction("dispatch")
 
 			reqBytes, _ := json.Marshal(map[string]any{
 				"session_id": sid,
@@ -364,7 +364,7 @@ func TestConcurrentIsolation(t *testing.T) {
 			ptr := uint32(allocRes[0])
 			mem.Write(ptr, reqBytes)
 
-			evalRes, evalErr := evalFn.Call(ctx, uint64(ptr), uint64(len(reqBytes)))
+			evalRes, evalErr := dispatchFn.Call(ctx, uint64(ptr), uint64(len(reqBytes)))
 			if evalErr != nil {
 				results[i] = instanceResult{sessionID: sid, err: evalErr}
 				return

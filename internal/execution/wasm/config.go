@@ -78,8 +78,8 @@ type Config struct {
 	SnapshotMode string `conf:"wasm_snapshot_mode"`
 
 	// PythonScriptPath is the host path to the trusted Python evaluation script.
-	// Used by Agent Python and the independent resident Python compatibility path.
-	// The script must define evaluation_function(response, answer, params=None).
+	// Used by Python Reactor and the independent resident Python compatibility path.
+	// Python Reactor scripts must define dispatch(method, payload).
 	PythonScriptPath string `conf:"wasm_python_script"`
 
 	// PythonPreloadMode controls whether Agent Python passes the trusted evaluator

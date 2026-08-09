@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Bundle Lambda Feedback package-style Python evaluators into one script.
 
-The output keeps reactor-python's existing contract: a single Python script that
-exports evaluation_function(response, answer, params) and optionally
-preview_function(response, answer, params). It embeds local package modules in an
+The output is an optional evaluator-owned adapter: a single Python script that
+exports dispatch(method, payload). It embeds local package modules in an
 in-memory import loader, so runtime does not need the original fixture/package
 paths mounted.
 """
@@ -165,16 +164,25 @@ _LF_EVAL_ENTRYPOINT = {eval_entrypoint!r}
 _LF_PREVIEW_ENTRYPOINT = {preview_literal}
 
 
-def evaluation_function(response, answer, params=None):
-    fn = _lf_load_entrypoint(_LF_EVAL_ENTRYPOINT)
-    return _lf_normalize_result(_lf_call_function(fn, "eval", response, answer, params or {{}}))
-
-
-def preview_function(response, answer=None, params=None):
-    if not _LF_PREVIEW_ENTRYPOINT:
-        return {{"preview": {{}}}}
-    fn = _lf_load_entrypoint(_LF_PREVIEW_ENTRYPOINT)
-    return _lf_normalize_result(_lf_call_function(fn, "preview", response, answer, params or {{}}))
+def dispatch(method, payload):
+    if not isinstance(method, str) or not method:
+        raise ValueError("method must be a non-empty string")
+    if not isinstance(payload, dict):
+        raise TypeError("payload must be a dict")
+    if method == "eval":
+        entrypoint = _LF_EVAL_ENTRYPOINT
+    elif method == "preview" and _LF_PREVIEW_ENTRYPOINT:
+        entrypoint = _LF_PREVIEW_ENTRYPOINT
+    else:
+        raise LookupError("unsupported evaluator method: " + method)
+    fn = _lf_load_entrypoint(entrypoint)
+    return _lf_normalize_result(_lf_call_function(
+        fn,
+        method,
+        payload.get("response"),
+        payload.get("answer"),
+        payload.get("params", {{}}),
+    ))
 '''
 
 

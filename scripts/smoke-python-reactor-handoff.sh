@@ -23,7 +23,7 @@ esac
 
 cd "${ROOT}"
 
-echo "==> verifying pinned Agent Python Runtime bundle"
+echo "==> verifying pinned Python Reactor runtime bundle"
 scripts/verify-python-reactor-artifact.sh
 
 echo "==> shell syntax checks"
@@ -40,11 +40,11 @@ go test ./internal/execution \
   -count=1
 
 echo "==> Linux compile gate"
-GOOS=linux GOARCH=amd64 go test -c ./internal/execution/wasm -o /tmp/shimmy-wasm-agent-python.test
-rm -f /tmp/shimmy-wasm-agent-python.test
+GOOS=linux GOARCH=amd64 go test -c ./internal/execution/wasm -o /tmp/shimmy-wasm-python-reactor.test
+rm -f /tmp/shimmy-wasm-python-reactor.test
 
 if [[ "${MODE}" == "direct" ]]; then
-  echo "==> real Agent Python Runtime E2E"
+  echo "==> real Python Reactor runtime E2E"
   AGENT_PYTHON_RUNTIME_WASM="${SHIMMY_REACTOR_WASM}" \
   AGENT_PYTHON_RUNTIME_MANIFEST="${SHIMMY_REACTOR_MANIFEST_PATH}" \
     go test ./internal/execution/wasm \
@@ -52,4 +52,4 @@ if [[ "${MODE}" == "direct" ]]; then
       -count=1 -v -timeout=15m
 fi
 
-echo "PASS: Agent Python Runtime handoff smoke (${MODE})"
+echo "PASS: Python Reactor runtime handoff smoke (${MODE})"

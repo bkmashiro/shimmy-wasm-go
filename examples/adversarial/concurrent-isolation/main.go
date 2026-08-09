@@ -2,7 +2,7 @@
 
 // concurrent-isolation adversarial module.
 //
-// Each evaluate call writes a "session ID" (parsed from the request) into a
+// Each dispatch call writes a "session ID" (parsed from the request) into a
 // module-global variable, sleeps briefly, then reads it back and reports
 // whether it still matches.
 //
@@ -30,8 +30,8 @@ func alloc(size int32) int32 {
 	return int32(uintptr(unsafe.Pointer(&reqBuf[0])))
 }
 
-//go:wasmexport evaluate
-func evaluate(reqPtr int32, reqLen int32) int32 {
+//go:wasmexport dispatch
+func dispatch(reqPtr int32, reqLen int32) int32 {
 	rawJSON := reqBuf[:reqLen]
 
 	var req struct {

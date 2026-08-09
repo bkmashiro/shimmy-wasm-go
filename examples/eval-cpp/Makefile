@@ -4,7 +4,7 @@ CXXFLAGS  := --target=wasm32-wasip1 \
              --sysroot=$(WASI_SDK)/share/wasi-sysroot \
              -std=c++17 -O2 -Wall \
              -Wl,--export=alloc \
-             -Wl,--export=evaluate \
+             -Wl,--export=dispatch \
              -Wl,--no-entry
 
 .PHONY: all clean

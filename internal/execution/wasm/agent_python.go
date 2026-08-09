@@ -129,7 +129,7 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 		}
 	}()
 	if d.closed {
-		return errors.New("agent-python: dispatcher is shut down")
+		return errors.New("python-reactor: dispatcher is shut down")
 	}
 	if d.started {
 		return nil
@@ -143,7 +143,7 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 		d.cfg.MaxMemoryPages = agentPythonDefaultMemoryPages
 	}
 	if d.cfg.MaxMemoryPages > agentPythonMaxMemoryPages {
-		return fmt.Errorf("agent-python: memory limit %d pages exceeds hard bound %d", d.cfg.MaxMemoryPages, agentPythonMaxMemoryPages)
+		return fmt.Errorf("python-reactor: memory limit %d pages exceeds hard bound %d", d.cfg.MaxMemoryPages, agentPythonMaxMemoryPages)
 	}
 	if d.cfg.MaxInstances <= 0 {
 		d.cfg.MaxInstances = runtime.NumCPU()
@@ -159,28 +159,28 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 	}
 	d.cfg.applyAgentPythonDefaults()
 	if err := d.cfg.validatePythonPreloadMode(); err != nil {
-		return fmt.Errorf("agent-python: %w", err)
+		return fmt.Errorf("python-reactor: %w", err)
 	}
 	if err := d.cfg.validateAgentPythonLifecycle(); err != nil {
-		return fmt.Errorf("agent-python: %w", err)
+		return fmt.Errorf("python-reactor: %w", err)
 	}
 	if d.cfg.PythonLifecycle == "snapshot" {
 		if err := d.cfg.validateSnapshotMode(d.cfg.MaxInstances); err != nil {
-			return fmt.Errorf("agent-python: %w", err)
+			return fmt.Errorf("python-reactor: %w", err)
 		}
 	}
 	if len(d.cfg.AllowedPaths) != 0 {
 		return errors.New("agent-python does not expose Host filesystem paths; unset FUNCTION_WASM_ALLOWED_PATHS")
 	}
 	if d.cfg.PythonScriptPath == "" {
-		return errors.New("agent-python: PythonScriptPath must be set (FUNCTION_WASM_PYTHON_SCRIPT)")
+		return errors.New("python-reactor: PythonScriptPath must be set (FUNCTION_WASM_PYTHON_SCRIPT)")
 	}
 	scriptBytes, err := os.ReadFile(d.cfg.PythonScriptPath)
 	if err != nil {
-		return fmt.Errorf("agent-python: read script %q: %w", d.cfg.PythonScriptPath, err)
+		return fmt.Errorf("python-reactor: read script %q: %w", d.cfg.PythonScriptPath, err)
 	}
 	if len(scriptBytes) == 0 || len(scriptBytes) > agentPythonPayloadMax {
-		return fmt.Errorf("agent-python: trusted script size %d is outside the 1 MiB guest bound", len(scriptBytes))
+		return fmt.Errorf("python-reactor: trusted script size %d is outside the 1 MiB guest bound", len(scriptBytes))
 	}
 
 	phaseStart := time.Now()
@@ -200,7 +200,7 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 	if d.cfg.CompileCacheDir != "" {
 		cache, err = wazero.NewCompilationCacheWithDir(d.cfg.CompileCacheDir)
 		if err != nil {
-			return fmt.Errorf("agent-python: create compilation cache: %w", err)
+			return fmt.Errorf("python-reactor: create compilation cache: %w", err)
 		}
 		runtimeConfig = runtimeConfig.WithCompilationCache(cache)
 	}
@@ -225,7 +225,7 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		closePartial()
-		return fmt.Errorf("agent-python: instantiate WASI imports: %w", err)
+		return fmt.Errorf("python-reactor: instantiate WASI imports: %w", err)
 	}
 	phaseStart = time.Now()
 	_, err = wasmRuntime.NewHostModuleBuilder("agent_runtime_v1").
@@ -239,7 +239,7 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		closePartial()
-		return fmt.Errorf("agent-python: instantiate Host imports: %w", err)
+		return fmt.Errorf("python-reactor: instantiate Host imports: %w", err)
 	}
 	phaseStart = time.Now()
 	compiled, err := wasmRuntime.CompileModule(ctx, artifact.WasmBytes)
@@ -249,7 +249,11 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		closePartial()
-		return fmt.Errorf("agent-python: compile guest: %w", err)
+		return fmt.Errorf("python-reactor: compile guest: %w", err)
+	}
+	if err := verifyCompiledPythonReactorArtifact(compiled, artifact); err != nil {
+		closePartial()
+		return err
 	}
 
 	d.runtime = wasmRuntime
@@ -274,7 +278,7 @@ func (d *AgentPythonDispatcher) Start(ctx context.Context) error {
 			} else if slot.snapshotSelected != d.snapshotSelected {
 				_ = slot.close(context.Background())
 				_ = d.closeRuntime(context.Background())
-				return fmt.Errorf("agent-python: snapshot strategy selected inconsistently across slots: %q then %q", d.snapshotSelected, slot.snapshotSelected)
+				return fmt.Errorf("python-reactor: snapshot strategy selected inconsistently across slots: %q then %q", d.snapshotSelected, slot.snapshotSelected)
 			}
 			d.prepared <- slot
 		}
@@ -322,7 +326,7 @@ func (d *AgentPythonDispatcher) Send(ctx context.Context, method string, params 
 		preparedReady := len(d.prepared)
 		d.mu.Unlock()
 		if !ready {
-			return nil, errors.New("agent-python: dispatcher is not ready")
+			return nil, errors.New("python-reactor: dispatcher is not ready")
 		}
 		return map[string]any{
 			"command": "healthcheck",
@@ -341,7 +345,7 @@ func (d *AgentPythonDispatcher) Send(ctx context.Context, method string, params 
 		}, nil
 	}
 	if !d.tryBeginSend() {
-		return nil, errors.New("agent-python: dispatcher is not ready")
+		return nil, errors.New("python-reactor: dispatcher is not ready")
 	}
 	defer d.pending.Done()
 
@@ -349,9 +353,9 @@ func (d *AgentPythonDispatcher) Send(ctx context.Context, method string, params 
 	case d.slots <- struct{}{}:
 		defer func() { <-d.slots }()
 	case <-d.closedCh:
-		return nil, errors.New("agent-python: dispatcher is shut down")
+		return nil, errors.New("python-reactor: dispatcher is shut down")
 	case <-ctx.Done():
-		return nil, fmt.Errorf("agent-python: acquire execution slot: %w", ctx.Err())
+		return nil, fmt.Errorf("python-reactor: acquire execution slot: %w", ctx.Err())
 	}
 
 	requestID := d.runCounter.Add(1)
@@ -385,7 +389,7 @@ func (d *AgentPythonDispatcher) Send(ctx context.Context, method string, params 
 		}
 		if slot.snapshotSelected != d.snapshotSelected {
 			_ = slot.close(context.Background())
-			return nil, fmt.Errorf("agent-python: replenished snapshot strategy %q, want %q", slot.snapshotSelected, d.snapshotSelected)
+			return nil, fmt.Errorf("python-reactor: replenished snapshot strategy %q, want %q", slot.snapshotSelected, d.snapshotSelected)
 		}
 	case "single-use":
 		select {
@@ -487,18 +491,18 @@ func acquireAgentPythonSnapshotSlot(
 			return slot, nil
 		}
 	case <-closed:
-		return nil, errors.New("agent-python: dispatcher is shut down")
+		return nil, errors.New("python-reactor: dispatcher is shut down")
 	case <-ctx.Done():
-		return nil, fmt.Errorf("agent-python: acquire prepared module: %w", ctx.Err())
+		return nil, fmt.Errorf("python-reactor: acquire prepared module: %w", ctx.Err())
 	default:
 	}
 
 	slot, err := create(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("agent-python: replenish missing prepared snapshot slot: %w", err)
+		return nil, fmt.Errorf("python-reactor: replenish missing prepared snapshot slot: %w", err)
 	}
 	if slot == nil {
-		return nil, errors.New("agent-python: replenish missing prepared snapshot slot returned nil")
+		return nil, errors.New("python-reactor: replenish missing prepared snapshot slot returned nil")
 	}
 	return slot, nil
 }
@@ -552,7 +556,7 @@ func (d *AgentPythonDispatcher) newInitializedModule(
 		Started: phaseStart, MemoryBytes: memoryBytes, Outcome: agentPythonPhaseOutcome(err), Err: err,
 	})
 	if err != nil {
-		return nil, diagnostic, fmt.Errorf("agent-python: instantiate guest: %w", err)
+		return nil, diagnostic, fmt.Errorf("python-reactor: instantiate guest: %w", err)
 	}
 	failed := true
 	defer func() {
@@ -599,12 +603,12 @@ func reserveAgentPythonSnapshotHeadroom(ctx context.Context, module api.Module, 
 		return nil
 	}
 	if bytes > math.MaxUint32 {
-		return fmt.Errorf("agent-python: snapshot headroom %d exceeds wasm32 allocation limit", bytes)
+		return fmt.Errorf("python-reactor: snapshot headroom %d exceeds wasm32 allocation limit", bytes)
 	}
 	allocate := module.ExportedFunction("alloc")
 	deallocate := module.ExportedFunction("dealloc")
 	if allocate == nil || deallocate == nil {
-		return errors.New("agent-python: snapshot headroom requires alloc and dealloc exports")
+		return errors.New("python-reactor: snapshot headroom requires alloc and dealloc exports")
 	}
 
 	const chunkBytes = uint64(1024 * 1024)
@@ -612,7 +616,7 @@ func reserveAgentPythonSnapshotHeadroom(ctx context.Context, module api.Module, 
 	defer func() {
 		for i := len(pointers) - 1; i >= 0; i-- {
 			if _, err := deallocate.Call(context.Background(), pointers[i]); err != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("agent-python: release snapshot headroom: %w", err))
+				retErr = errors.Join(retErr, fmt.Errorf("python-reactor: release snapshot headroom: %w", err))
 			}
 		}
 	}()
@@ -624,10 +628,10 @@ func reserveAgentPythonSnapshotHeadroom(ctx context.Context, module api.Module, 
 		}
 		result, err := allocate.Call(ctx, chunk)
 		if err != nil {
-			return fmt.Errorf("agent-python: reserve %d snapshot headroom bytes: %w", bytes, err)
+			return fmt.Errorf("python-reactor: reserve %d snapshot headroom bytes: %w", bytes, err)
 		}
 		if len(result) != 1 || result[0] == 0 {
-			return fmt.Errorf("agent-python: reserve %d snapshot headroom bytes: guest allocator returned no pointer", bytes)
+			return fmt.Errorf("python-reactor: reserve %d snapshot headroom bytes: guest allocator returned no pointer", bytes)
 		}
 		pointers = append(pointers, result[0])
 		remaining -= chunk
@@ -712,7 +716,7 @@ func (d *AgentPythonDispatcher) newPreparedModuleSlot(
 	})
 	if err != nil {
 		_ = slot.close(context.Background())
-		return nil, fmt.Errorf("agent-python: take prepared snapshot: %w", err)
+		return nil, fmt.Errorf("python-reactor: take prepared snapshot: %w", err)
 	}
 	slot.baselineSize = module.Memory().Size()
 	return slot, nil
@@ -720,14 +724,14 @@ func (d *AgentPythonDispatcher) newPreparedModuleSlot(
 
 func restoreAgentPythonSnapshot(slot *agentPythonModuleSlot) error {
 	if slot == nil || slot.module == nil || slot.strategy == nil {
-		return errors.New("agent-python: prepared snapshot slot is incomplete")
+		return errors.New("python-reactor: prepared snapshot slot is incomplete")
 	}
 	memory := slot.module.Memory()
 	if memory == nil {
-		return errors.New("agent-python: prepared snapshot slot has no memory")
+		return errors.New("python-reactor: prepared snapshot slot has no memory")
 	}
 	if memory.Size() != slot.baselineSize {
-		return fmt.Errorf("agent-python: memory size drift: got %d bytes, baseline %d", memory.Size(), slot.baselineSize)
+		return fmt.Errorf("python-reactor: memory size drift: got %d bytes, baseline %d", memory.Size(), slot.baselineSize)
 	}
 	return slot.strategy.Restore(memory)
 }
@@ -772,11 +776,11 @@ func (d *AgentPythonDispatcher) replaceSnapshotSlot(requestID uint64) error {
 	defer cancel()
 	slot, err := d.newPreparedModuleSlot(ctx, true, AgentPythonPurposeReplacement, requestID)
 	if err != nil {
-		return fmt.Errorf("agent-python: replace prepared snapshot slot: %w", err)
+		return fmt.Errorf("python-reactor: replace prepared snapshot slot: %w", err)
 	}
 	if slot.snapshotSelected != d.snapshotSelected {
 		_ = slot.close(context.Background())
-		return fmt.Errorf("agent-python: replacement selected snapshot strategy %q, want %q", slot.snapshotSelected, d.snapshotSelected)
+		return fmt.Errorf("python-reactor: replacement selected snapshot strategy %q, want %q", slot.snapshotSelected, d.snapshotSelected)
 	}
 	d.mu.Lock()
 	closed = d.closed
@@ -896,10 +900,10 @@ func agentPythonDeniedHostCall(context.Context, api.Module, uint32, uint32, uint
 func callAgentPythonNoArgs(ctx context.Context, module api.Module, name string) error {
 	function := module.ExportedFunction(name)
 	if function == nil {
-		return fmt.Errorf("agent-python: required export %q is missing", name)
+		return fmt.Errorf("python-reactor: required export %q is missing", name)
 	}
 	if _, err := function.Call(ctx); err != nil {
-		return fmt.Errorf("agent-python: call %s: %w", name, err)
+		return fmt.Errorf("python-reactor: call %s: %w", name, err)
 	}
 	return nil
 }
@@ -913,7 +917,7 @@ func callAgentPythonStatus(ctx context.Context, module api.Module, name string, 
 		return err
 	}
 	if len(results) != 1 || uint32(results[0]) != 0 {
-		return fmt.Errorf("agent-python: %s returned non-zero status", name)
+		return fmt.Errorf("python-reactor: %s returned non-zero status", name)
 	}
 	return nil
 }
@@ -927,24 +931,24 @@ func callAgentPythonExecute(ctx context.Context, module api.Module, request []by
 		return nil, err
 	}
 	if len(results) != 1 {
-		return nil, errors.New("agent-python: execute returned an unexpected result count")
+		return nil, errors.New("python-reactor: execute returned an unexpected result count")
 	}
 	return readAgentPythonResponse(module.Memory(), uint32(results[0]))
 }
 
 func callAgentPythonWithBytes(ctx context.Context, module api.Module, name string, data []byte) ([]uint64, func(), error) {
 	if len(data) == 0 || len(data) > agentPythonPayloadMax || len(data) > math.MaxUint32 {
-		return nil, nil, fmt.Errorf("agent-python: %s input size %d is outside the guest bound", name, len(data))
+		return nil, nil, fmt.Errorf("python-reactor: %s input size %d is outside the guest bound", name, len(data))
 	}
 	allocate := module.ExportedFunction("alloc")
 	deallocate := module.ExportedFunction("dealloc")
 	function := module.ExportedFunction(name)
 	if allocate == nil || deallocate == nil || function == nil {
-		return nil, nil, fmt.Errorf("agent-python: required allocation or %s export is missing", name)
+		return nil, nil, fmt.Errorf("python-reactor: required allocation or %s export is missing", name)
 	}
 	allocated, err := allocate.Call(ctx, uint64(uint32(len(data))))
 	if err != nil || len(allocated) != 1 || allocated[0] == 0 {
-		return nil, nil, fmt.Errorf("agent-python: guest allocation failed: %w", err)
+		return nil, nil, fmt.Errorf("python-reactor: guest allocation failed: %w", err)
 	}
 	pointer := uint32(allocated[0])
 	var once sync.Once
@@ -957,34 +961,34 @@ func callAgentPythonWithBytes(ctx context.Context, module api.Module, name strin
 	}
 	if !module.Memory().Write(pointer, data) {
 		release()
-		return nil, nil, errors.New("agent-python: guest input write is out of bounds")
+		return nil, nil, errors.New("python-reactor: guest input write is out of bounds")
 	}
 	results, err := function.Call(ctx, uint64(pointer), uint64(uint32(len(data))))
 	if err != nil {
 		release()
-		return nil, nil, fmt.Errorf("agent-python: call %s: %w", name, err)
+		return nil, nil, fmt.Errorf("python-reactor: call %s: %w", name, err)
 	}
 	return results, release, nil
 }
 
 func readAgentPythonResponse(memory api.Memory, pointer uint32) ([]byte, error) {
 	if memory == nil {
-		return nil, errors.New("agent-python: guest module has no linear memory")
+		return nil, errors.New("python-reactor: guest module has no linear memory")
 	}
 	header, ok := memory.Read(pointer, 4)
 	if !ok {
-		return nil, errors.New("agent-python: response length prefix is out of bounds")
+		return nil, errors.New("python-reactor: response length prefix is out of bounds")
 	}
 	length := binary.LittleEndian.Uint32(header)
 	if length > agentPythonPayloadMax {
-		return nil, fmt.Errorf("agent-python: response payload length %d exceeds limit %d", length, agentPythonPayloadMax)
+		return nil, fmt.Errorf("python-reactor: response payload length %d exceeds limit %d", length, agentPythonPayloadMax)
 	}
 	if uint64(pointer)+4+uint64(length) > uint64(memory.Size()) {
-		return nil, errors.New("agent-python: response frame is out of bounds")
+		return nil, errors.New("python-reactor: response frame is out of bounds")
 	}
 	payload, ok := memory.Read(pointer+4, length)
 	if !ok {
-		return nil, errors.New("agent-python: response payload is out of bounds")
+		return nil, errors.New("python-reactor: response payload is out of bounds")
 	}
 	return append([]byte(nil), payload...), nil
 }

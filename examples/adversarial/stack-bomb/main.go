@@ -20,8 +20,8 @@ func recurse(n int) int {
 	return recurse(n+1) + 1
 }
 
-//go:wasmexport evaluate
-func evaluate(reqPtr int32, reqLen int32) int32 {
+//go:wasmexport dispatch
+func dispatch(reqPtr int32, reqLen int32) int32 {
 	_ = reqPtr
 	_ = reqLen
 

@@ -53,7 +53,7 @@ func benchEchoWasmBytes(b *testing.B) []byte {
 
 // BenchmarkDispatcher_Send_Pool1 measures the per-request round-trip cost
 // through a WASM dispatcher with exactly one module instance (no pool
-// contention): alloc → memory write → evaluate → response parse →
+// contention): alloc → memory write → dispatch → response parse →
 // snapshot restore.
 func BenchmarkDispatcher_Send_Pool1(b *testing.B) {
 	ctx := context.Background()

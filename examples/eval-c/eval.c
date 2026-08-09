@@ -60,11 +60,11 @@ int32_t alloc(int32_t size) {
 }
 
 /*
- * evaluate — called by host with (ptr, len) of the JSON request in linear memory.
+ * dispatch — called by host with (ptr, len) of the JSON request in linear memory.
  * Returns pointer to resp_buf: [4-byte LE length][JSON body].
  */
 __attribute__((visibility("default")))
-int32_t evaluate(int32_t req_ptr, int32_t req_len) {
+int32_t dispatch(int32_t req_ptr, int32_t req_len) {
     (void)req_ptr; /* always &req_buf */
 
     const char *src = (const char *)req_buf;

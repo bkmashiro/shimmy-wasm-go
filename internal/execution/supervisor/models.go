@@ -20,8 +20,8 @@ const (
 	// WasmIO describes execution of WebAssembly modules via wazero
 	WasmIO IOInterface = "wasm"
 
-	// PythonWasmIO describes execution of Python scripts via CPython compiled to
-	// WASM (python.wasm) running inside wazero with a persistent server loop.
+	// PythonWasmIO is a reserved legacy value. NewDispatcher rejects it; select
+	// FUNCTION_INTERFACE=wasm and an explicit profile instead.
 	PythonWasmIO IOInterface = "python-wasm"
 
 	// PyodideIO describes execution of Python eval functions via Pyodide
@@ -30,9 +30,8 @@ const (
 	// Use FUNCTION_PYODIDE_SCRIPT to specify the Python eval script path.
 	PyodideIO IOInterface = "pyodide"
 
-	// ReactorPythonIO is the legacy interface name for Agent Python Runtime v1.
-	// It compiles the reactor artifact once and serves each request in a fresh,
-	// single-use wazero module instance.
+	// ReactorPythonIO is a reserved legacy value. NewDispatcher rejects it;
+	// select FUNCTION_INTERFACE=wasm and FUNCTION_WASM_PROFILE=python-reactor.
 	ReactorPythonIO IOInterface = "reactor-python"
 )
 

@@ -47,7 +47,7 @@ functions on arbitrary, serverless platforms.`
 			&cli.StringFlag{
 				Name:     "interface",
 				Aliases:  []string{"i"},
-				Usage:    "the execution interface. Options: rpc, file, wasm, pyodide; reactor-python and python-wasm are compatibility aliases.",
+				Usage:    "the execution interface. Options: rpc, file, wasm, pyodide.",
 				Value:    "rpc",
 				Category: "function",
 				EnvVars:  []string{"FUNCTION_INTERFACE"},
@@ -58,7 +58,7 @@ functions on arbitrary, serverless platforms.`
 				Usage:    "the command to invoke to start the worker process.",
 				Category: "function",
 				EnvVars:  []string{"FUNCTION_COMMAND"},
-				// Not required for wasm / python-wasm interfaces which manage
+				// Not required for wasm, which manages
 				// the worker process internally via wazero.
 			},
 			&cli.StringFlag{

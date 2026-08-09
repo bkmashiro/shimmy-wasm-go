@@ -3,16 +3,9 @@ Example Python evaluation function for Shimmy-WASM (CPython-WASI resident backen
 
 Contract
 --------
-evaluation_function(response, answer, params) -> dict
-    Called for "eval" requests.
-    Must return a dict with at least:
-        is_correct  bool
-        feedback    str
-
-preview_function(response, answer, params) -> dict  [optional]
-    Called for "preview" requests.
-    If not defined, the runner falls back to evaluation_function.
-    Should return a preview/hint without revealing the full solution.
+dispatch(method, payload) -> dict
+    The evaluator owns method routing. This example handles `eval` and
+    `preview`; unknown methods raise an explicit error.
 
 Shimmy's configured lifecycle must prevent global-variable mutations from
 leaking between requests. The invocation counter below is runtime-lane reset
@@ -23,7 +16,7 @@ evidence, not application state.
 _guest_invocation_count = 0
 
 
-def evaluation_function(response, answer, params=None):
+def _evaluate(response, answer, params=None):
     """Numeric equality check with configurable absolute tolerance."""
     global _guest_invocation_count
     _guest_invocation_count += 1
@@ -62,7 +55,7 @@ def evaluation_function(response, answer, params=None):
         }
 
 
-def preview_function(response, answer, params=None):
+def _preview(response, answer, params=None):
     """Return a hint without revealing whether the answer is correct."""
     params = params or {}
     tolerance = float(params.get("tolerance", 1e-9))
@@ -80,3 +73,13 @@ def preview_function(response, answer, params=None):
             f"The checker uses absolute tolerance {tolerance:.2e}."
         ),
     }
+
+def dispatch(method, payload):
+    """Evaluator-owned method routing for the Python Reactor ABI."""
+    if not isinstance(payload, dict):
+        raise TypeError("payload must be a dict")
+    if method == "eval":
+        return _evaluate(payload.get("response"), payload.get("answer"), payload.get("params", {}))
+    if method == "preview":
+        return _preview(payload.get("response"), payload.get("answer"), payload.get("params", {}))
+    raise LookupError("unsupported method: " + str(method))

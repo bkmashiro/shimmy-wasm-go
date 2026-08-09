@@ -22,10 +22,12 @@ func TestAgentPythonObserverExactArtifactPhaseOrder(t *testing.T) {
 
 	scriptPath := filepath.Join(t.TempDir(), "observer_eval.py")
 	require.NoError(t, os.WriteFile(scriptPath, []byte(`_counter = 0
-def evaluation_function(response, answer, params=None):
+def dispatch(method, payload):
+    if method != "eval":
+        raise LookupError("unsupported method: " + method)
     global _counter
     _counter += 1
-    return {"is_correct": response == answer, "guest_invocation_count": _counter}
+    return {"is_correct": payload.get("response") == payload.get("answer"), "guest_invocation_count": _counter}
 `), 0o600))
 
 	var mu sync.Mutex

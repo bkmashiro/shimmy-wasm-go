@@ -31,7 +31,7 @@ def run_bundler(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_bundle_boilerplate_generates_standalone_eval_and_preview(tmp_path: Path) -> None:
+def test_bundle_boilerplate_generates_evaluator_owned_dispatch(tmp_path: Path) -> None:
     out = tmp_path / "boilerplate.bundle.py"
 
     result = run_bundler(
@@ -50,8 +50,14 @@ def test_bundle_boilerplate_generates_standalone_eval_and_preview(tmp_path: Path
     assert result.returncode == 0, result.stderr
     assert out.exists()
     bundle = load_module(out)
-    assert bundle.evaluation_function("2", "2", {}) == {"is_correct": True}
-    assert bundle.preview_function("x + 1", "", {}) == {"preview": {"sympy": "x + 1"}}
+    assert bundle.dispatch("eval", {"response": "2", "answer": "2", "params": {}}) == {"is_correct": True}
+    assert bundle.dispatch("preview", {"response": "x + 1", "answer": "", "params": {}}) == {"preview": {"sympy": "x + 1"}}
+    try:
+        bundle.dispatch("future/chat.v2", {"messages": []})
+    except LookupError as error:
+        assert "future/chat.v2" in str(error)
+    else:
+        raise AssertionError("unsupported method must not fall back to eval")
 
 
 def test_generated_bundle_does_not_need_fixture_paths_at_runtime(tmp_path: Path) -> None:
@@ -78,8 +84,8 @@ def test_generated_bundle_does_not_need_fixture_paths_at_runtime(tmp_path: Path)
             f"p={str(out)!r}; "
             "s=importlib.util.spec_from_file_location('b', p); "
             "m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
-            "print(m.evaluation_function('a','a',{})); "
-            "print(m.preview_function('a','',{}))",
+            "print(m.dispatch('eval', {'response':'a','answer':'a','params':{}})); "
+            "print(m.dispatch('preview', {'response':'a','answer':'','params':{}}))",
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -125,7 +131,7 @@ def test_bundle_can_embed_extra_pure_python_include_roots(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stderr
     bundle = load_module(out)
-    assert bundle.evaluation_function("", "", {}) == {"is_correct": True}
+    assert bundle.dispatch("eval", {"response": "", "answer": "", "params": {}}) == {"is_correct": True}
 
 
 def test_bundle_can_add_zip_payloads_to_sys_path(tmp_path: Path) -> None:
@@ -168,7 +174,7 @@ def test_bundle_can_add_zip_payloads_to_sys_path(tmp_path: Path) -> None:
     text = out.read_text()
     assert str(zip_path) in text
     bundle = load_module(out)
-    assert bundle.evaluation_function("", "", {}) == {"is_correct": True}
+    assert bundle.dispatch("eval", {"response": "", "answer": "", "params": {}}) == {"is_correct": True}
 
 
 def test_bundle_rewrites_legacy_typing_io_imports_for_python_314(tmp_path: Path) -> None:

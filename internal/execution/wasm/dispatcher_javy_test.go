@@ -21,7 +21,7 @@ package wasm
 //
 // Architecture note
 // -----------------
-// This is *not* the WASM dispatcher ABI (alloc/evaluate).  The JS runner uses
+// This is *not* the WASM dispatcher ABI (alloc/dispatch).  The JS runner uses
 // the RPC dispatcher ABI (JSON-RPC 2.0 framed with Content-Length headers).
 // The two paths are independent; this test verifies the JS-specific path works
 // correctly from an external-protocol perspective.

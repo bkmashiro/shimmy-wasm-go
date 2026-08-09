@@ -68,7 +68,7 @@ func TestAgentPythonObserverPanicDoesNotAffectRuntime(t *testing.T) {
 
 func TestAgentPythonStartupObserverMayShutdownDispatcher(t *testing.T) {
 	scriptPath := filepath.Join(t.TempDir(), "eval.py")
-	require.NoError(t, os.WriteFile(scriptPath, []byte("def evaluation_function(response, answer, params=None):\n    return {}\n"), 0o600))
+	require.NoError(t, os.WriteFile(scriptPath, []byte("def dispatch(method, payload):\n    return {}\n"), 0o600))
 
 	var dispatcher *AgentPythonDispatcher
 	dispatcher = NewAgentPythonDispatcher(Config{
