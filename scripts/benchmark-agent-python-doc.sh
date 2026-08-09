@@ -79,10 +79,12 @@ except BaseException:
 ' "$destination" "$maximum_bytes" "$exact_bytes"
 }
 
-render_sbatch() {
+render_sbatch_with_time() {
   local run_id="$1"
-  local job_script="${2:-$(gateway_root "$run_id")/job.sh}"
+  local walltime="$2"
+  local job_script="${3:-$(gateway_root "$run_id")/job.sh}"
   validate_run_id "$run_id"
+  case "$walltime" in 2-12:00:00|02:00:00) ;; *) printf 'unsafe walltime: %q\n' "$walltime" >&2; return 2 ;; esac
   case "$job_script" in
     /tmp/shimmy-agent-python-controller-"$run_id"/job.sh) ;;
     *) printf 'unsafe remote job script: %q\n' "$job_script" >&2; return 2 ;;
@@ -97,7 +99,7 @@ render_sbatch() {
     "--cpus-per-task=6" \
     "--mem=48G" \
     "--gres=gpu:nvidia_a16:1" \
-    "--time=2-12:00:00" \
+    "--time=$walltime" \
     "--export=NIL" \
     "--chdir=/tmp" \
     "--output=/tmp/shimmy-agent-python-%j-slurm.out" \
@@ -105,14 +107,26 @@ render_sbatch() {
     "$job_script"
 }
 
-submit_job() {
+render_sbatch() {
+  render_sbatch_with_time "$1" 2-12:00:00
+}
+
+render_canary_sbatch() {
+  render_sbatch_with_time "$1" 02:00:00
+}
+
+submit_job_with_time() {
   local run_id="$1"
+  local walltime="$2"
+  case "$walltime" in 2-12:00:00|02:00:00) ;; *) printf 'unsafe walltime: %q\n' "$walltime" >&2; return 2 ;; esac
   local root
   root="$(gateway_root "$run_id")"
-  "${SSH[@]}" bash -s -- "$root" "$run_id" <<'REMOTE'
+  "${SSH[@]}" bash -s -- "$root" "$run_id" "$walltime" <<'REMOTE'
 set -euo pipefail
 root="$1"
 run_id="$2"
+walltime="$3"
+case "$walltime" in 2-12:00:00|02:00:00) ;; *) exit 2 ;; esac
 case "$root" in /tmp/shimmy-agent-python-controller-agent-python-*) ;; *) exit 2 ;; esac
 [[ "$(cat "$root/.controller-owner")" == "$run_id" ]]
 (
@@ -123,10 +137,18 @@ case "$root" in /tmp/shimmy-agent-python-controller-agent-python-*) ;; *) exit 2
 sbatch --parsable \
   --partition=a16 --nodelist=gpuvm36 --nodes=1 --ntasks=1 \
   --cpus-per-task=6 --mem=48G --gres=gpu:nvidia_a16:1 \
-  --time=2-12:00:00 --export=NIL --chdir=/tmp \
+  --time="$walltime" --export=NIL --chdir=/tmp \
   --output=/tmp/shimmy-agent-python-%j-slurm.out \
   --job-name="$run_id" "$root/job.sh"
 REMOTE
+}
+
+submit_job() {
+  submit_job_with_time "$1" 2-12:00:00
+}
+
+submit_canary_job() {
+  submit_job_with_time "$1" 02:00:00
 }
 
 upload_bundle() {
@@ -422,7 +444,7 @@ REMOTE
 }
 
 usage() {
-  printf 'usage: %s COMMAND ...\ncommands: validate-run-id RUN_ID | render-sbatch RUN_ID | upload RUN_ID BUNDLE_DIR | submit RUN_ID | stage RUN_ID JOB_ID | status JOB_ID | pull JOB_ID NEW_LOCAL_DIR | ack JOB_ID VALIDATED_LOCAL_DIR | cleanup-controller RUN_ID\n' "$0" >&2
+  printf 'usage: %s COMMAND ...\ncommands: validate-run-id RUN_ID | render-sbatch RUN_ID | render-canary-sbatch RUN_ID | upload RUN_ID BUNDLE_DIR | submit RUN_ID | submit-canary RUN_ID | stage RUN_ID JOB_ID | status JOB_ID | pull JOB_ID NEW_LOCAL_DIR | ack JOB_ID VALIDATED_LOCAL_DIR | cleanup-controller RUN_ID\n' "$0" >&2
   exit 2
 }
 
@@ -430,8 +452,10 @@ command_name="${1-}"
 case "$command_name" in
   validate-run-id) [[ $# -eq 2 ]] || usage; validate_run_id "$2" ;;
   render-sbatch) [[ $# -eq 2 ]] || usage; render_sbatch "$2" ;;
+  render-canary-sbatch) [[ $# -eq 2 ]] || usage; render_canary_sbatch "$2" ;;
   upload) [[ $# -eq 3 ]] || usage; upload_bundle "$2" "$3" ;;
   submit) [[ $# -eq 2 ]] || usage; submit_job "$2" ;;
+  submit-canary) [[ $# -eq 2 ]] || usage; submit_canary_job "$2" ;;
   stage) [[ $# -eq 3 ]] || usage; stage_job "$2" "$3" ;;
   status) [[ $# -eq 2 ]] || usage; job_status "$2" ;;
   pull) [[ $# -eq 3 ]] || usage; pull_result "$2" "$3" ;;

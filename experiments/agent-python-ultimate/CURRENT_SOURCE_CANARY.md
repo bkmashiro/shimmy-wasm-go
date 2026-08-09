@@ -45,11 +45,11 @@ Use one SSH ControlMaster. Start with `shell2` for identity, then use the
 configured `gpucluster2` scheduler host. Login hosts are control planes only.
 
 ```bash
-run_id="python-reactor-canary-$(date -u +%Y%m%dT%H%M%SZ)"
+run_id="agent-python-$(date -u +%Y%m%dt%H%M%Sz)-$(git rev-parse --short=8 HEAD)"
 scripts/benchmark-agent-python-doc.sh upload "$run_id" "$output"
-scripts/benchmark-agent-python-doc.sh render-sbatch "$run_id"
+scripts/benchmark-agent-python-doc.sh render-canary-sbatch "$run_id"
 # Inspect live partition/TRES state and run sbatch --test-only before submit.
-# Then use submit, stage, status (at intervals >= 1 minute), pull and ack.
+# Then use submit-canary, stage, status (at intervals >= 1 minute), pull and ack.
 ```
 
 Do not submit a second job after an ambiguous timeout until `squeue`/`sacct` and
