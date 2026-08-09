@@ -25,6 +25,7 @@ func setValidQEMUEnvironment(t *testing.T) {
 		t.Setenv(env, path)
 	}
 	t.Setenv("FUNCTION_QEMU_ENABLED", "true")
+	t.Setenv("FUNCTION_QEMU_ACCELERATOR", "tcg")
 }
 
 func TestApplyQEMUFallbackConfigLeavesDisabledWorkerExactlyUnchanged(t *testing.T) {
@@ -208,6 +209,19 @@ func TestApplyQEMUFallbackConfigRejectsUnreadableArtifact(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "FUNCTION_QEMU_ROOTFS")
 	assert.Contains(t, err.Error(), "not readable")
+}
+
+func TestApplyQEMUFallbackConfigRequiresExplicitAccelerator(t *testing.T) {
+	for _, value := range []string{"", "auto", "magic"} {
+		t.Run(value, func(t *testing.T) {
+			setValidQEMUEnvironment(t)
+			t.Setenv("FUNCTION_QEMU_ACCELERATOR", value)
+			_, err := applyQEMUFallbackConfig(representativeRPCConfig(supervisor.StdioTransport))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "FUNCTION_QEMU_ACCELERATOR")
+			assert.Contains(t, err.Error(), "tcg or kvm")
+		})
+	}
 }
 
 func TestApplyQEMUFallbackConfigRejectsUnsupportedInterfaces(t *testing.T) {

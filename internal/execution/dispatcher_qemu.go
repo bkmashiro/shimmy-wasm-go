@@ -79,6 +79,11 @@ func applyQEMUFallbackConfig(cfg supervisor.Config) (supervisor.Config, error) {
 		}
 	}
 
+	accelerator := strings.ToLower(strings.TrimSpace(os.Getenv("FUNCTION_QEMU_ACCELERATOR")))
+	if accelerator != "tcg" && accelerator != "kvm" {
+		return supervisor.Config{}, fmt.Errorf("qemu: FUNCTION_QEMU_ACCELERATOR must be explicitly set to tcg or kvm")
+	}
+
 	resetPolicy := strings.ToLower(strings.TrimSpace(os.Getenv("FUNCTION_QEMU_RESET_POLICY")))
 	if resetPolicy == "" {
 		if strings.TrimSpace(os.Getenv("AWS_LAMBDA_RUNTIME_API")) != "" {

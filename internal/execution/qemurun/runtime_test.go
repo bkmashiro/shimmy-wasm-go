@@ -9,7 +9,7 @@ import (
 	"github.com/lambda-feedback/shimmy/internal/protocol"
 )
 
-func TestLoadRuntimeConfigUsesBoundedDefaultsAndTCGWithoutKVM(t *testing.T) {
+func TestLoadRuntimeConfigUsesBoundedDefaultsWithExplicitTCG(t *testing.T) {
 	env := runtimeFixtureEnvironment(t)
 	got, err := LoadRuntimeConfig(mapEnvironment(env), false)
 	if err != nil {
@@ -29,14 +29,28 @@ func TestLoadRuntimeConfigUsesBoundedDefaultsAndTCGWithoutKVM(t *testing.T) {
 	}
 }
 
-func TestLoadRuntimeConfigAutoSelectsKVMOnlyWhenAvailable(t *testing.T) {
+func TestLoadRuntimeConfigAcceptsExplicitAvailableKVM(t *testing.T) {
 	env := runtimeFixtureEnvironment(t)
+	env["FUNCTION_QEMU_ACCELERATOR"] = "kvm"
 	got, err := LoadRuntimeConfig(mapEnvironment(env), true)
 	if err != nil {
 		t.Fatalf("LoadRuntimeConfig: %v", err)
 	}
 	if got.VM.Accelerator != AcceleratorKVM {
 		t.Fatalf("accelerator = %q, want kvm", got.VM.Accelerator)
+	}
+}
+
+func TestLoadRuntimeConfigRejectsMissingOrAutoAccelerator(t *testing.T) {
+	for _, value := range []string{"", "auto"} {
+		t.Run(value, func(t *testing.T) {
+			env := runtimeFixtureEnvironment(t)
+			env["FUNCTION_QEMU_ACCELERATOR"] = value
+			_, err := LoadRuntimeConfig(mapEnvironment(env), true)
+			if !errors.Is(err, ErrInvalidRuntimeConfig) {
+				t.Fatalf("error = %v, want ErrInvalidRuntimeConfig", err)
+			}
+		})
 	}
 }
 
@@ -109,6 +123,7 @@ func runtimeFixtureEnvironment(t *testing.T) map[string]string {
 		"FUNCTION_QEMU_BINARY":         "/opt/qemu-system-x86_64",
 		"FUNCTION_QEMU_ROOTFS":         rootfs,
 		"FUNCTION_QEMU_IMAGE_MANIFEST": manifestPath,
+		"FUNCTION_QEMU_ACCELERATOR":    "tcg",
 	}
 }
 

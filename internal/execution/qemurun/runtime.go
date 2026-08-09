@@ -128,10 +128,7 @@ func durationSetting(getenv func(string) string, name string, fallback, minimum,
 func resolveAccelerator(value string, kvmAvailable bool) (Accelerator, error) {
 	switch Accelerator(strings.ToLower(strings.TrimSpace(value))) {
 	case "", AcceleratorAuto:
-		if kvmAvailable {
-			return AcceleratorKVM, nil
-		}
-		return AcceleratorTCG, nil
+		return "", fmt.Errorf("%w: FUNCTION_QEMU_ACCELERATOR must be explicitly set to tcg or kvm", ErrInvalidRuntimeConfig)
 	case AcceleratorTCG:
 		return AcceleratorTCG, nil
 	case AcceleratorKVM:
