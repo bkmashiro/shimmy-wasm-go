@@ -4,6 +4,23 @@ This is a bounded confirmation run for the current Shimmy source and the pinned
 Python Reactor artifact. It does not replace or silently mix with the complete
 campaign measured at `0024edd`.
 
+## Completed confirmation
+
+ICL Slurm job `272150` completed on `kingfisher.doc.ic.ac.uk` using signed source
+`79fc28418c75b4af658c042a60a3452d64c592ba`. All 10 planned rows and 64 requests
+completed with no failed row, request, or phase event. The validated result binds:
+
+```text
+artifact  90c27951b2d8c2c7a8b42705b365cb4231c6dad207aad5260d55d2f9a85f1034
+manifest  00278f54552185e7e69e02cd0c5ec796bc784d1657c4412be93bd334df10c8c5
+plan      8a2c13baa8a56be9cc7870d23be2ddb7a0e4e447a438859d259600b978a2b897
+result    a7eb78b8c884f2e7a3df804e0a48a640f145787769046070acdba7c5c1b0130b
+```
+
+The run confirms Linux execution and reset coverage for the existing pinned
+runtime artifact. It is not a replacement for the frozen complete performance
+campaign and is not used for cross-host ranking.
+
 ## Artifact decision
 
 The pinned `agent-python-runtime-numpy-core.wasm` does not need rebuilding for

@@ -124,6 +124,29 @@ bits, precision wider than binary64, preservation of
 `1.0000000000000000000000000000000002`, and narrowing to binary64 `1.0` only
 at explicit conversion.
 
+## Current-source Linux canary
+
+ICL Slurm job `272150` ran the signed source at
+`79fc28418c75b4af658c042a60a3452d64c592ba` on
+`kingfisher.doc.ic.ac.uk` (Linux/amd64). The existing pinned runtime artifact
+(`90c27951...85f1034`) and manifest (`00278f54...10c8c5`) completed all 10
+planned rows and all 64 requests with no failed row, request, or phase event.
+Coverage included direct and HTTP dispatch, fresh and single-use lifecycles,
+snapshot/memcpy and snapshot/COW reset, concurrency one and four, and 32 MiB at
+1% dirty plus 64 MiB at 10% dirty.
+
+This confirms that the existing Python Reactor runtime Wasm does not require a
+rebuild for the evaluator-owned dispatcher change. Evaluator bundles that expose
+only `evaluation_function` or `preview_function` must still be regenerated to
+provide `dispatch(method, payload)`. The canary is a bounded compatibility
+confirmation on one shared Slurm host; it does not replace the frozen complete
+performance campaign or support cross-host timing comparisons.
+
+The result receipt binds plan SHA-256
+`8a2c13baa8a56be9cc7870d23be2ddb7a0e4e447a438859d259600b978a2b897`
+and result SHA-256
+`a7eb78b8c884f2e7a3df804e0a48a640f145787769046070acdba7c5c1b0130b`.
+
 ## Reproducibility boundary
 
 Producer bitwise reproducibility remains a per-candidate result:
