@@ -43,10 +43,10 @@ manifest, materializes the ten-row plan, and writes checksums.
 
 Use one SSH ControlMaster. Start with `shell2` for identity, then use the
 configured `gpucluster2` scheduler host. Login hosts are control planes only.
-The canary requests 6 CPUs and 48 GiB on the currently idle `long/gpuvm19`
-node and does not request a GPU explicitly. The site job-submit policy may still
-attach one T4 allocation because this Slurm instance exposes only GPU
-partitions; the benchmark does not initialize or use CUDA.
+The canary requests 6 CPUs, 48 GiB, and one scheduler-required T4 allocation on
+`t4/kingfisher`. The benchmark does not initialize or use CUDA; the explicit T4
+request only satisfies this Slurm instance's GPU-partition policy and gives the
+canary a substantially earlier start than the old fixed A16 host.
 
 ```bash
 run_id="agent-python-$(date -u +%Y%m%dt%H%M%Sz)-$(git rev-parse --short=8 HEAD)"

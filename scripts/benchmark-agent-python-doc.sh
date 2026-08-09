@@ -122,12 +122,13 @@ render_canary_sbatch() {
   printf '%s\n' \
     "sbatch" \
     "--parsable" \
-    "--partition=long" \
-    "--nodelist=gpuvm19" \
+    "--partition=t4" \
+    "--nodelist=kingfisher" \
     "--nodes=1" \
     "--ntasks=1" \
     "--cpus-per-task=6" \
     "--mem=48G" \
+    "--gres=gpu:tesla_t4:1" \
     "--time=02:00:00" \
     "--export=NIL" \
     "--chdir=/tmp" \
@@ -184,8 +185,8 @@ case "$root" in /tmp/shimmy-agent-python-controller-agent-python-*) ;; *) exit 2
   bash -n job.sh
 )
 sbatch --parsable \
-  --partition=long --nodelist=gpuvm19 --nodes=1 --ntasks=1 \
-  --cpus-per-task=6 --mem=48G \
+  --partition=t4 --nodelist=kingfisher --nodes=1 --ntasks=1 \
+  --cpus-per-task=6 --mem=48G --gres=gpu:tesla_t4:1 \
   --time=02:00:00 --export=NIL --chdir=/tmp \
   --output=/tmp/shimmy-agent-python-%j-slurm.out \
   --job-name="$run_id" "$root/job.sh"
