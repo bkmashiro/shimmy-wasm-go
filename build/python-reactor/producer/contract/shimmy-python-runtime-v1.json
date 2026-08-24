@@ -1,0 +1,58 @@
+{
+  "schema": "shimmy-python-runtime-contract/v1",
+  "artifact_contract": "shimmy-python-runtime/v1",
+  "target": "wasm32-wasip1",
+  "execution_model": "reactor",
+  "profiles": [
+    "base",
+    "numpy-core",
+    "sympy"
+  ],
+  "profile_python_modules": {
+    "base": [],
+    "numpy-core": [
+      "numpy"
+    ],
+    "sympy": [
+      "mpmath",
+      "sympy"
+    ]
+  },
+  "identity_u32": 1397772849,
+  "allowed_import_modules": [
+    "wasi_snapshot_preview1"
+  ],
+  "forbidden_import_modules": [
+    "agent_runtime_v1"
+  ],
+  "required_exports": [
+    "memory",
+    "_initialize",
+    "shimmy_python_runtime_identity",
+    "shimmy_python_init",
+    "shimmy_python_prepare",
+    "alloc",
+    "dealloc",
+    "evaluate"
+  ],
+  "request_envelope": {
+    "required": [
+      "method",
+      "params"
+    ],
+    "methods": [
+      "eval",
+      "preview"
+    ],
+    "unknown_fields": "reject"
+  },
+  "response_layout": "u32le-length-prefixed-json",
+  "request_max_bytes": 1048576,
+  "response_max_bytes": 1048576,
+  "capabilities": {
+    "environment": false,
+    "filesystem_preopens": false,
+    "network": false,
+    "host_calls": false
+  }
+}

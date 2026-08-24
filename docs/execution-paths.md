@@ -36,7 +36,10 @@ FUNCTION_WASM_PYTHON_SCRIPT=/opt/evaluator/evaluator.py
 FUNCTION_WASM_PYTHON_LIFECYCLE=snapshot
 ```
 
-The prepared trusted script owns `dispatch(method, payload)`. Shimmy verifies
+The prepared trusted script defines `evaluation_function(response, answer, params)`
+and may define `preview_function(response, params)`. Artifacts are built
+from the self-contained producer under `build/python-reactor/producer/` and use
+the `shimmy-python-runtime/v1` ABI. Shimmy verifies
 the following before serving requests:
 
 - artifact SHA-256 against the manifest;

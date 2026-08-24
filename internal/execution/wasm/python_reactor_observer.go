@@ -9,7 +9,6 @@ const (
 	PythonReactorPhaseArtifactVerify PythonReactorPhase = "artifact-verify"
 	PythonReactorPhaseRuntimeCreate  PythonReactorPhase = "runtime-create"
 	PythonReactorPhaseWASIImports    PythonReactorPhase = "wasi-imports"
-	PythonReactorPhaseHostImports    PythonReactorPhase = "host-imports"
 	PythonReactorPhaseCompile        PythonReactorPhase = "compile"
 	PythonReactorPhaseInstantiate    PythonReactorPhase = "instantiate"
 	PythonReactorPhaseInitialize     PythonReactorPhase = "initialize"

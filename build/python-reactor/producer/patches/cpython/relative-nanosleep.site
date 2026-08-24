@@ -1,0 +1,5 @@
+# Shimmy downstream WASI timer policy.
+# Wazero supports relative poll_oneoff clocks but not CPython's absolute
+# clock_nanosleep path. Keep nanosleep enabled and disable the absolute path.
+ac_cv_func_clock_nanosleep=no
+ac_cv_lib_rt_clock_nanosleep=no

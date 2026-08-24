@@ -50,13 +50,8 @@ type Config struct {
 
 	// PythonScriptPath is the host path to the trusted Python evaluation script.
 	// Used by Python Reactor and the independent resident Python compatibility path.
-	// Python Reactor scripts must define dispatch(method, payload).
+	// Python React...[truncated]
 	PythonScriptPath string `conf:"wasm_python_script"`
-
-	// PythonPreloadMode controls whether Python Reactor passes the trusted evaluator
-	// through runtime_prepare. "evaluator" is the default; "off" executes the
-	// trusted script in each fresh request namespace.
-	PythonPreloadMode string `conf:"wasm_python_preload"`
 
 	// PythonLifecycle selects whether Python Reactor modules are initialized for
 	// every request, consumed once from a prepared pool, or restored to their
@@ -96,18 +91,6 @@ func (c *Config) applyDefaults() {
 	}
 	if c.MaxMemoryPages == 0 {
 		c.MaxMemoryPages = 256 // 16 MB
-	}
-	if c.PythonPreloadMode == "" {
-		c.PythonPreloadMode = "evaluator"
-	}
-}
-
-func (c *Config) validatePythonPreloadMode() error {
-	switch c.PythonPreloadMode {
-	case "evaluator", "off":
-		return nil
-	default:
-		return fmt.Errorf("python preload mode %q is invalid; use \"evaluator\" or \"off\"", c.PythonPreloadMode)
 	}
 }
 
@@ -167,9 +150,7 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("FUNCTION_WASM_PYTHON_SCRIPT"); v != "" {
 		c.PythonScriptPath = v
 	}
-	if v := os.Getenv("FUNCTION_WASM_PYTHON_PRELOAD"); v != "" {
-		c.PythonPreloadMode = v
-	}
+
 	if v := os.Getenv("FUNCTION_WASM_PYTHON_LIFECYCLE"); v != "" {
 		c.PythonLifecycle = strings.TrimSpace(v)
 	}

@@ -1,7 +1,7 @@
 """Linux E2E fixture shaped like a Lambda Feedback evaluator.
 
-The evaluator owns its public functions and the thin dispatch adapter. Shimmy
-only passes the command and validated request payload.
+The evaluator owns its public functions. Shimmy only passes the command and
+validated request payload.
 """
 
 _invocation_count = 0
@@ -28,18 +28,3 @@ def preview_function(response, params):
         "preview": f"submitted: {response}",
         "invocation_count": _invocation_count,
     }
-
-
-def dispatch(method, payload):
-    if method == "eval":
-        return evaluation_function(
-            payload.get("response"),
-            payload.get("answer"),
-            payload.get("params", {}),
-        )
-    if method == "preview":
-        return preview_function(
-            payload.get("response"),
-            payload.get("params", {}),
-        )
-    raise LookupError("unsupported method: " + str(method))

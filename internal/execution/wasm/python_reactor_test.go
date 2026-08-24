@@ -7,9 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -60,34 +58,13 @@ func writePythonReactorManifestFixture(t *testing.T, customModule, customName st
 	return wasmPath, manifestPath
 }
 
-func TestVerifyPythonReactorArtifactAcceptsPinnedV1Contract(t *testing.T) {
+func TestVerifyPythonReactorArtifactRejectsLegacyAgentContract(t *testing.T) {
 	wasmPath, manifestPath := writePythonReactorManifestFixture(t, "agent_runtime_v1", "host_call")
-
-	artifact, err := verifyPythonReactorArtifact(wasmPath, manifestPath)
-
-	require.NoError(t, err)
-	assert.Equal(t, "base", artifact.Profile)
-	assert.Equal(t, "a3b7c9d1e5f80123456789abcdef0123456789ab", artifact.ProducerCommit)
-	assert.Len(t, artifact.WasmBytes, 15)
-}
-
-func TestVerifyPythonReactorArtifactRejectsUnexpectedCustomImport(t *testing.T) {
-	wasmPath, manifestPath := writePythonReactorManifestFixture(t, "legacy_env", "stub")
 
 	_, err := verifyPythonReactorArtifact(wasmPath, manifestPath)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unexpected custom import "legacy_env"."stub"`)
-}
-
-func TestVerifyPythonReactorArtifactRejectsDigestDrift(t *testing.T) {
-	wasmPath, manifestPath := writePythonReactorManifestFixture(t, "agent_runtime_v1", "host_call")
-	require.NoError(t, os.WriteFile(wasmPath, []byte("\x00asm\x01\x00\x00\x00changed"), 0o644))
-
-	_, err := verifyPythonReactorArtifact(wasmPath, manifestPath)
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "artifact SHA-256")
+	assert.Contains(t, err.Error(), "shimmy-python-runtime/v1")
 }
 
 func writeShimmyPythonManifestFixture(t *testing.T, profile string, modules []string) (string, string) {
@@ -140,6 +117,16 @@ func TestVerifyPythonReactorArtifactAcceptsShimmyProducerContract(t *testing.T) 
 	assert.Equal(t, "evaluate", artifact.ExecuteExport)
 }
 
+func TestVerifyPythonReactorArtifactRejectsShimmyProducerDigestDrift(t *testing.T) {
+	wasmPath, manifestPath := writeShimmyPythonManifestFixture(t, "base", nil)
+	require.NoError(t, os.WriteFile(wasmPath, []byte("\x00asm\x01\x00\x00\x00produces"), 0o644))
+
+	_, err := verifyPythonReactorArtifact(wasmPath, manifestPath)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not match manifest")
+}
+
 func TestVerifyPythonReactorArtifactRejectsFalseProfileModules(t *testing.T) {
 	wasmPath, manifestPath := writeShimmyPythonManifestFixture(t, "base", []string{"sympy"})
 	_, err := verifyPythonReactorArtifact(wasmPath, manifestPath)
@@ -151,16 +138,16 @@ func validPythonReactorModuleShape() pythonReactorModuleShape {
 	i32 := api.ValueTypeI32
 	return pythonReactorModuleShape{
 		Exports: map[string]pythonReactorFunctionSignature{
-			"_initialize":     {},
-			"runtime_init":    {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
-			"runtime_prepare": {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
-			"alloc":           {Params: []api.ValueType{i32}, Results: []api.ValueType{i32}},
-			"dealloc":         {Params: []api.ValueType{i32}},
-			"execute":         {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
+			"_initialize":                    {},
+			"shimmy_python_runtime_identity": {Results: []api.ValueType{i32}},
+			"shimmy_python_init":             {Results: []api.ValueType{i32}},
+			"shimmy_python_prepare":          {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
+			"alloc":                          {Params: []api.ValueType{i32}, Results: []api.ValueType{i32}},
+			"dealloc":                        {Params: []api.ValueType{i32}},
+			"evaluate":                       {Params: []api.ValueType{i32, i32}, Results: []api.ValueType{i32}},
 		},
 		ExportedMemories: map[string]struct{}{"memory": {}},
 		Imports: map[pythonReactorImport]struct{}{
-			{Module: "agent_runtime_v1", Name: "host_call"}:      {},
 			{Module: "wasi_snapshot_preview1", Name: "fd_write"}: {},
 		},
 	}
@@ -168,9 +155,15 @@ func validPythonReactorModuleShape() pythonReactorModuleShape {
 
 func validPythonReactorArtifactContract() *PythonReactorArtifact {
 	return &PythonReactorArtifact{
-		DeclaredExports: []string{"memory", "_initialize", "runtime_init", "runtime_prepare", "alloc", "dealloc", "execute"},
+		ABI:           "shimmy-python-runtime/v1",
+		InitExport:    "shimmy_python_init",
+		PrepareExport: "shimmy_python_prepare",
+		ExecuteExport: "evaluate",
+		DeclaredExports: []string{
+			"memory", "_initialize", "shimmy_python_runtime_identity", "shimmy_python_init",
+			"shimmy_python_prepare", "alloc", "dealloc", "evaluate",
+		},
 		DeclaredImports: []pythonReactorImport{
-			{Module: "agent_runtime_v1", Name: "host_call"},
 			{Module: "wasi_snapshot_preview1", Name: "fd_write"},
 		},
 	}
@@ -219,7 +212,7 @@ func TestVerifyPythonReactorModuleShapeRejectsUndeclaredActualImport(t *testing.
 
 func TestVerifyPythonReactorModuleShapeRejectsWrongDispatchABISignature(t *testing.T) {
 	shape := validPythonReactorModuleShape()
-	shape.Exports["execute"] = pythonReactorFunctionSignature{
+	shape.Exports["evaluate"] = pythonReactorFunctionSignature{
 		Params:  []api.ValueType{api.ValueTypeI64},
 		Results: []api.ValueType{api.ValueTypeI32},
 	}
@@ -227,33 +220,7 @@ func TestVerifyPythonReactorModuleShapeRejectsWrongDispatchABISignature(t *testi
 	err := verifyPythonReactorModuleShape(shape, validPythonReactorArtifactContract())
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `export "execute" has ABI`)
-}
-
-func TestBuildPythonReactorRunRequestPreservesArbitraryMethodAndOpaqueParams(t *testing.T) {
-	params := map[string]any{
-		"messages":     []any{map[string]any{"role": "USER", "content": "hello"}},
-		"future_field": map[string]any{"nested": true},
-	}
-
-	request, err := buildPythonReactorRunRequest("shimmy-run-1", "future/chat.v2", params, "")
-
-	require.NoError(t, err)
-	var envelope struct {
-		RunID  string         `json:"run_id"`
-		Code   string         `json:"code"`
-		Inputs map[string]any `json:"inputs"`
-	}
-	require.NoError(t, json.Unmarshal(request, &envelope))
-	assert.Equal(t, "shimmy-run-1", envelope.RunID)
-	assert.Equal(t, pythonReactorPreparedCall, envelope.Code)
-	assert.Equal(t, "future/chat.v2", envelope.Inputs["method"])
-	assert.Equal(t, params["messages"], envelope.Inputs["params"].(map[string]any)["messages"])
-	assert.Equal(t, true, envelope.Inputs["params"].(map[string]any)["future_field"].(map[string]any)["nested"])
-	assert.Contains(t, envelope.Code, `dispatch(inputs["method"], inputs["params"])`)
-	assert.NotContains(t, envelope.Code, "evaluation_function")
-	assert.NotContains(t, envelope.Code, "preview_function")
-	assert.NotContains(t, envelope.Code, "shimmy-run-1")
+	assert.Contains(t, err.Error(), `export "evaluate" has ABI`)
 }
 
 func TestShimmyProducerRequestAndResponseContract(t *testing.T) {
@@ -274,47 +241,6 @@ func TestShimmyProducerResponsePreservesTypedError(t *testing.T) {
 	assert.Equal(t, "No module named scipy", executionErr.Message)
 }
 
-func TestBuildPythonReactorRunRequestSupportsExplicitPreloadOff(t *testing.T) {
-	request, err := buildPythonReactorRunRequest(
-		"shimmy-run-2",
-		"eval",
-		map[string]any{"response": "1", "answer": "1"},
-		"def dispatch(method, payload): return {'method': method, 'payload': payload}",
-	)
-
-	require.NoError(t, err)
-	var envelope map[string]any
-	require.NoError(t, json.Unmarshal(request, &envelope))
-	inputs := envelope["inputs"].(map[string]any)
-	assert.Contains(t, envelope["code"], `inputs["script"]`)
-	assert.Contains(t, inputs["script"], "def dispatch(method, payload)")
-	assert.NotContains(t, envelope["code"], "evaluation_function")
-	assert.NotContains(t, envelope["code"], "preview_function")
-}
-
-func TestDecodePythonReactorResponsePreservesSuccessResult(t *testing.T) {
-	payload := []byte(`{"status":"ok","result":{"opaque":{"value":true}},"receipts":[],"metrics":{"capability_calls":0,"result_bytes":25},"error":null}`)
-
-	result, err := decodePythonReactorResponse(payload)
-
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"value": true}, result["opaque"])
-}
-
-func TestDecodePythonReactorResponseReturnsTypedExecutionError(t *testing.T) {
-	payload := []byte(`{"status":"error","result":null,"receipts":[],"metrics":{"capability_calls":0,"result_bytes":0},"error":{"code":"unsupported_method","message":"method is not registered","error_type":"UnsupportedMethod","traceback":"trace"}}`)
-
-	result, err := decodePythonReactorResponse(payload)
-
-	require.Nil(t, result)
-	var executionErr *PythonReactorExecutionError
-	require.ErrorAs(t, err, &executionErr)
-	assert.Equal(t, "unsupported_method", executionErr.Code)
-	assert.Equal(t, "method is not registered", executionErr.Message)
-	assert.Equal(t, "UnsupportedMethod", executionErr.ErrorType)
-	assert.Equal(t, "trace", executionErr.Traceback)
-}
-
 func TestPythonReactorRejectsHostFilesystemPaths(t *testing.T) {
 	t.Setenv("FUNCTION_WASM_ALLOWED_PATHS", "/tmp")
 	dispatcher := NewPythonReactorDispatcher(Config{}, zap.NewNop())
@@ -324,10 +250,10 @@ func TestPythonReactorRejectsHostFilesystemPaths(t *testing.T) {
 }
 
 func TestPythonReactorDispatcherRealNumPyArtifactCompatibility(t *testing.T) {
-	wasmPath := os.Getenv("AGENT_PYTHON_RUNTIME_WASM")
-	manifestPath := os.Getenv("AGENT_PYTHON_RUNTIME_MANIFEST")
+	wasmPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_WASM")
+	manifestPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_MANIFEST")
 	if wasmPath == "" || manifestPath == "" {
-		t.Skip("AGENT_PYTHON_RUNTIME_WASM and AGENT_PYTHON_RUNTIME_MANIFEST are required")
+		t.Skip("SHIMMY_PYTHON_RUNTIME_WASM and SHIMMY_PYTHON_RUNTIME_MANIFEST are required")
 	}
 
 	scriptPath := filepath.Join(t.TempDir(), "eval.py")
@@ -335,20 +261,14 @@ func TestPythonReactorDispatcherRealNumPyArtifactCompatibility(t *testing.T) {
 import numpy as np
 _counter = 0
 
-def dispatch(method, payload):
-    if method == "preview":
-        return {"preview": f"response={payload.get('response')}"}
-    if method != "eval":
-        raise LookupError("unsupported method: " + method)
-    response = payload.get("response")
-    answer = payload.get("answer")
+def preview_function(response, params):
+    return {"preview": f"response={response}"}
+
+def evaluation_function(response, answer, params):
     global _counter
     _counter += 1
     if response == "explode":
         raise ValueError("expected explosion")
-    if response == "host_call":
-        from agent_runtime.tools import fetch_many
-        return fetch_many([{"request_id": "r1", "target": "fixture", "path": "/ok"}])
     if response == "float128":
         one = np.longdouble("1")
         wide = np.longdouble("1.0000000000000000000000000000000002")
@@ -408,13 +328,6 @@ def dispatch(method, payload):
 	require.ErrorAs(t, err, &failureErr)
 	assert.Equal(t, "ValueError", failureErr.ErrorType)
 	assert.Equal(t, "expected explosion", failureErr.Message)
-
-	denied, err := dispatcher.Send(context.Background(), "eval", map[string]any{"response": "host_call", "answer": "x"})
-	require.Nil(t, denied)
-	var deniedErr *PythonReactorExecutionError
-	require.ErrorAs(t, err, &deniedErr)
-	assert.Equal(t, "RuntimeError", deniedErr.ErrorType)
-	assert.Contains(t, deniedErr.Message, "Host capability bridge rejected")
 
 	binary128, err := dispatcher.Send(context.Background(), "eval", map[string]any{"response": "float128", "answer": "x"})
 	require.NoError(t, err)
@@ -517,11 +430,11 @@ func TestRestorePythonReactorSnapshotRejectsMemoryGrowth(t *testing.T) {
 }
 
 func TestPythonReactorDispatcherProducerTimeoutReturnsBeforeSnapshotRefill(t *testing.T) {
-	wasmPath := os.Getenv("AGENT_PYTHON_RUNTIME_WASM")
-	manifestPath := os.Getenv("AGENT_PYTHON_RUNTIME_MANIFEST")
+	wasmPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_WASM")
+	manifestPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_MANIFEST")
 	evaluatorPath := os.Getenv("SAFE_EVAL_PYTHON_SCRIPT")
 	if wasmPath == "" || manifestPath == "" || evaluatorPath == "" {
-		t.Skip("AGENT_PYTHON_RUNTIME_WASM, AGENT_PYTHON_RUNTIME_MANIFEST, and SAFE_EVAL_PYTHON_SCRIPT are required")
+		t.Skip("SHIMMY_PYTHON_RUNTIME_WASM, SHIMMY_PYTHON_RUNTIME_MANIFEST, and SAFE_EVAL_PYTHON_SCRIPT are required")
 	}
 
 	dispatcher := NewPythonReactorDispatcher(Config{
@@ -568,22 +481,20 @@ func TestPythonReactorDispatcherProducerTimeoutReturnsBeforeSnapshotRefill(t *te
 }
 
 func TestPythonReactorDispatcherSingleUsePreparedRefillsNeverServedCandidates(t *testing.T) {
-	wasmPath := os.Getenv("AGENT_PYTHON_RUNTIME_WASM")
-	manifestPath := os.Getenv("AGENT_PYTHON_RUNTIME_MANIFEST")
+	wasmPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_WASM")
+	manifestPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_MANIFEST")
 	if wasmPath == "" || manifestPath == "" {
-		t.Skip("AGENT_PYTHON_RUNTIME_WASM and AGENT_PYTHON_RUNTIME_MANIFEST are required")
+		t.Skip("SHIMMY_PYTHON_RUNTIME_WASM and SHIMMY_PYTHON_RUNTIME_MANIFEST are required")
 	}
 
 	scriptPath := filepath.Join(t.TempDir(), "single-use.py")
 	script := `
 _counter = 0
 
-def dispatch(method, payload):
-    if method != "eval":
-        raise LookupError("unsupported method: " + method)
+def evaluation_function(response, answer, params):
     global _counter
     _counter += 1
-    return {"counter": _counter, "is_correct": payload.get("response") == payload.get("answer")}
+    return {"counter": _counter, "is_correct": response == answer}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 
@@ -647,22 +558,19 @@ def dispatch(method, payload):
 }
 
 func TestPythonReactorDispatcherTimeoutDoesNotPoisonRuntime(t *testing.T) {
-	wasmPath := os.Getenv("AGENT_PYTHON_RUNTIME_WASM")
-	manifestPath := os.Getenv("AGENT_PYTHON_RUNTIME_MANIFEST")
+	wasmPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_WASM")
+	manifestPath := os.Getenv("SHIMMY_PYTHON_RUNTIME_MANIFEST")
 	if wasmPath == "" || manifestPath == "" {
-		t.Skip("AGENT_PYTHON_RUNTIME_WASM and AGENT_PYTHON_RUNTIME_MANIFEST are required")
+		t.Skip("SHIMMY_PYTHON_RUNTIME_WASM and SHIMMY_PYTHON_RUNTIME_MANIFEST are required")
 	}
 
 	scriptPath := filepath.Join(t.TempDir(), "timeout.py")
 	script := `
-def dispatch(method, payload):
-    if method != "eval":
-        raise LookupError("unsupported method: " + method)
-    response = payload.get("response")
+def evaluation_function(response, answer, params):
     if response == "loop":
         while True:
             pass
-    return {"is_correct": response == payload.get("answer")}
+    return {"is_correct": response == answer}
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
 
@@ -690,61 +598,4 @@ def dispatch(method, payload):
 	after, err := dispatcher.Send(context.Background(), "eval", map[string]any{"response": "42", "answer": "42"})
 	require.NoError(t, err)
 	assert.Equal(t, true, after["result"].(map[string]any)["is_correct"])
-}
-
-func TestPythonReactorDispatcherRealLambdaFeedbackBundle(t *testing.T) {
-	wasmPath := os.Getenv("AGENT_PYTHON_RUNTIME_WASM")
-	manifestPath := os.Getenv("AGENT_PYTHON_RUNTIME_MANIFEST")
-	if wasmPath == "" || manifestPath == "" {
-		t.Skip("set AGENT_PYTHON_RUNTIME_WASM and AGENT_PYTHON_RUNTIME_MANIFEST")
-	}
-
-	_, currentFile, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", ".."))
-	bundlePath := filepath.Join(t.TempDir(), "boilerplate.bundle.py")
-	command := exec.Command("python3",
-		filepath.Join(repoRoot, "tools", "lf-bundle-python", "lf_bundle_python.py"),
-		"--root", filepath.Join(repoRoot, "examples", "lambda-feedback-fixtures", "boilerplate-python"),
-		"--adapter-root", filepath.Join(repoRoot, "examples", "lambda-feedback-adapter"),
-		"--eval-entrypoint", "evaluation_function.evaluation:evaluation_function",
-		"--preview-entrypoint", "evaluation_function.preview:preview_function",
-		"--out", bundlePath,
-	)
-	command.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, string(output))
-
-	dispatcher := NewPythonReactorDispatcher(Config{
-		ModulePath:                wasmPath,
-		PythonReactorManifestPath: manifestPath,
-		PythonScriptPath:          bundlePath,
-		MaxMemoryPages:            8192,
-		MaxInstances:              1,
-		Timeout:                   2 * time.Minute,
-	}, zap.NewNop())
-	startContext, startCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer startCancel()
-	require.NoError(t, dispatcher.Start(startContext))
-	t.Cleanup(func() {
-		shutdownContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_ = dispatcher.Shutdown(shutdownContext)
-	})
-
-	evalResult, err := dispatcher.Send(context.Background(), "eval", map[string]any{
-		"response": "same",
-		"answer":   "same",
-		"params":   map[string]any{},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, true, evalResult["result"].(map[string]any)["is_correct"])
-
-	previewResult, err := dispatcher.Send(context.Background(), "preview", map[string]any{
-		"response": "x+y",
-		"params":   map[string]any{},
-	})
-	require.NoError(t, err)
-	preview := previewResult["result"].(map[string]any)["preview"].(map[string]any)
-	assert.Equal(t, "x+y", preview["sympy"])
 }

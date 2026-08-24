@@ -1,0 +1,12 @@
+[
+  {
+    "path": "sympy/external/gmpy.py",
+    "old": "from ctypes import c_long, sizeof\n",
+    "new": "from struct import calcsize\n"
+  },
+  {
+    "path": "sympy/external/gmpy.py",
+    "old": "LONG_MAX = (1 << (8*sizeof(c_long) - 1)) - 1\n",
+    "new": "LONG_MAX = (1 << (8*calcsize(\"l\") - 1)) - 1\n"
+  }
+]

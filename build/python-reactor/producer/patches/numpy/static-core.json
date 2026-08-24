@@ -1,0 +1,22 @@
+[
+  {
+    "path": "numpy/_core/meson.build",
+    "old": "py.extension_module('_multiarray_umath',\n  [\n    config_h,\n    _numpyconfig_h,\n    src_multiarray,\n    src_multiarray_umath_common,\n    src_umath,\n    src_ufunc_api[1],  # __ufunc_api.h\n    src_numpy_api[1],  # __multiarray_api.h\n    src_umath_doc_h,\n    npy_math_internal_h,\n  ],\n  objects: svml_objects,\n  c_args: c_args_common,\n  cpp_args: cpp_args_common,\n  include_directories: [\n    'include',\n    'src/common',\n    'src/multiarray',\n    'src/npymath',\n    'src/umath',\n    'src/highway'\n  ],\n  dependencies: [blas_dep],\n  link_with: [npymath_lib, multiarray_umath_mtargets.static_lib('_multiarray_umath_mtargets')] + highway_lib,\n  install: true,\n  subdir: 'numpy/_core',\n)\n",
+    "new": "static_library('shimmy_numpy_multiarray_umath',\n  [\n    config_h,\n    _numpyconfig_h,\n    src_multiarray,\n    src_multiarray_umath_common,\n    src_umath,\n    src_ufunc_api[1],  # __ufunc_api.h\n    src_numpy_api[1],  # __multiarray_api.h\n    src_umath_doc_h,\n    npy_math_internal_h,\n  ],\n  objects: svml_objects,\n  c_args: c_args_common,\n  cpp_args: cpp_args_common,\n  include_directories: [\n    'include',\n    'src/common',\n    'src/multiarray',\n    'src/npymath',\n    'src/umath',\n    'src/highway'\n  ],\n  dependencies: [py_dep, blas_dep],\n  link_with: [npymath_lib, multiarray_umath_mtargets.static_lib('_multiarray_umath_mtargets')] + highway_lib,\n  install: false,\n)\n"
+  },
+  {
+    "path": "meson.build",
+    "old": "py = import('python').find_installation(pure: false)\npy_dep = py.dependency()\n",
+    "new": "py = import('python').find_installation(pure: false)\npy_dep = declare_dependency(\n  include_directories: include_directories(\n    meson.get_external_property('shimmy_python_include'),\n    meson.get_external_property('shimmy_python_platinclude'),\n  ),\n)\n"
+  },
+  {
+    "path": "numpy/_core/include/numpy/npy_cpu.h",
+    "old": "#elif defined(__EMSCRIPTEN__)\n    /* __EMSCRIPTEN__ is defined by emscripten: an LLVM-to-Web compiler */\n    #define NPY_CPU_WASM\n",
+    "new": "#elif defined(__EMSCRIPTEN__) || defined(__wasm__)\n    /* Both Emscripten and WASI clang target WebAssembly. */\n    #define NPY_CPU_WASM\n"
+  },
+  {
+    "path": "numpy/linalg/meson.build",
+    "old": "py.extension_module('_umath_linalg',\n  [\n    'umath_linalg.cpp',\n    python_xerbla_sources,\n    lapack_lite_sources,\n  ],\n  dependencies: [np_core_dep, blas_dep, lapack_dep],\n  link_with: npymath_lib,\n  install: true,\n  subdir: 'numpy/linalg',\n)\n",
+    "new": "static_library('shimmy_numpy_umath_linalg',\n  [\n    'umath_linalg.cpp',\n    python_xerbla_sources,\n    lapack_lite_sources,\n  ],\n  dependencies: [py_dep, np_core_dep, blas_dep, lapack_dep],\n  link_with: npymath_lib,\n  install: false,\n)\n"
+  }
+]

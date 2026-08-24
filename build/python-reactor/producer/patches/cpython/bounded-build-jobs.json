@@ -1,0 +1,5 @@
+{
+  "path": "Tools/wasm/wasi/__main__.py",
+  "old": "try:\n    from os import process_cpu_count as cpu_count\nexcept ImportError:\n    from os import cpu_count\n",
+  "new": "def cpu_count():\n    jobs = int(os.environ[\"SHIMMY_BUILD_JOBS\"])\n    if jobs < 1:\n        raise ValueError(\"SHIMMY_BUILD_JOBS must be positive\")\n    return jobs\n"
+}

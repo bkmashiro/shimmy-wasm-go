@@ -10,12 +10,22 @@ on:
       - 'v*.*.*'
   pull_request:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Workflow lane to execute
+        required: true
+        type: choice
+        default: standard
+        options:
+          - standard
+          - shimmy-python
 
 
 jobs:
   build:
     name: Build
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'shimmy-python'
     env:
       VERSION: ${{ github.ref_name }}
       COMMIT: ${{ github.sha }}
@@ -60,6 +70,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'shimmy-python'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -86,6 +97,7 @@ jobs:
   test-sandbox:
     name: Sandbox Integration Tests
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'shimmy-python'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,6 +130,7 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: [test, test-sandbox, build]
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'shimmy-python'
     concurrency:
       group: ${{ github.ref }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_name != github.event.repository.default_branch }}
@@ -139,6 +152,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Github Packages
+        if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -163,7 +177,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          push: ${{ !(github.event_name == 'push' && github.ref_type != 'tag' && github.ref_name != github.event.repository.default_branch) }}
+          push: ${{ github.event_name == 'push' && (github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch) }}
           platforms: ${{ (github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch) && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
@@ -194,3 +208,90 @@ jobs:
           gh api repos/${{ github.repository_owner }}/evaluation-function-base/dispatches \
             --method POST \
             -f event_type=trigger-build
+
+  build-shimmy-python:
+    name: Build Shimmy Python runtime
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'shimmy-python'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config zlib1g-dev libbz2-dev \
+            libffi-dev liblzma-dev libsqlite3-dev uuid-dev
+
+      - name: Run producer contract tests
+        run: |
+          python3 -m unittest discover \
+            -s build/python-reactor/producer/tests -p 'test_*.py' -v
+          python3 build/python-reactor/producer/tools/verify_sources_lock.py \
+            build/python-reactor/producer/sources.lock.json
+
+      - name: Build source-bound base artifact
+        run: |
+          build/python-reactor/producer/build/build-base.sh \
+            --work-dir "$RUNNER_TEMP/shimmy-python-work" \
+            --dist-dir "$GITHUB_WORKSPACE/dist/shimmy-python/base" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA"
+
+      - name: Build Shimmy container for Python Reactor E2E
+        run: |
+          docker build \
+            --build-arg VERSION="${GITHUB_REF_NAME}" \
+            --build-arg COMMIT="${GITHUB_SHA}" \
+            --tag shimmy-python-reactor-e2e:${GITHUB_SHA} \
+            .
+
+      - name: Run Python Reactor container E2E
+        env:
+          SHIMMY_E2E_CONTAINER_IMAGE: shimmy-python-reactor-e2e:${{ github.sha }}
+          SHIMMY_PYTHON_REACTOR_WASM: ${{ github.workspace }}/dist/shimmy-python/base/shimmy-python-runtime-base.wasm
+          SHIMMY_PYTHON_REACTOR_MANIFEST: ${{ github.workspace }}/dist/shimmy-python/base/manifest.json
+        run: tests/e2e/python-reactor/container.sh
+
+      - name: Build source-bound SymPy artifact
+        run: |
+          build/python-reactor/producer/build/build-sympy.sh \
+            --work-dir "$RUNNER_TEMP/shimmy-python-work" \
+            --base-dist-dir "$GITHUB_WORKSPACE/dist/shimmy-python/base" \
+            --dist-dir "$GITHUB_WORKSPACE/dist/shimmy-python/sympy" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA"
+
+      - name: Build source-bound NumPy core artifact
+        run: |
+          build/python-reactor/producer/build/build-numpy-core.sh \
+            --work-dir "$RUNNER_TEMP/shimmy-python-work" \
+            --dist-dir "$GITHUB_WORKSPACE/dist/shimmy-python/numpy-core" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --jobs 2
+
+      - name: Verify bundle checksums
+        run: |
+          (cd dist/shimmy-python/base && sha256sum -c SHA256SUMS)
+          (cd dist/shimmy-python/sympy && sha256sum -c SHA256SUMS)
+          (cd dist/shimmy-python/numpy-core && sha256sum -c SHA256SUMS)
+
+      - name: Upload exact runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimmy-python-runtime-${{ github.sha }}
+          path: dist/shimmy-python
+          if-no-files-found: error
+          retention-days: 7
