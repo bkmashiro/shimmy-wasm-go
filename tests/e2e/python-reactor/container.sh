@@ -23,7 +23,9 @@ cleanup() {
 trap cleanup EXIT
 
 cleanup
-docker run --rm -d \
+# Do not use --rm: when startup fails, the exit trap removes the container after
+# we have captured its logs and terminal state.
+docker run -d \
   --name "${NAME}" \
   --publish "127.0.0.1:${PORT}:8080" \
   --volume "${WASM}:/runtime/runtime.wasm:ro" \
