@@ -6,6 +6,7 @@ IMAGE="${SHIMMY_E2E_CONTAINER_IMAGE:?set SHIMMY_E2E_CONTAINER_IMAGE}"
 WASM="${SHIMMY_PYTHON_REACTOR_WASM:?set SHIMMY_PYTHON_REACTOR_WASM}"
 MANIFEST="${SHIMMY_PYTHON_REACTOR_MANIFEST:?set SHIMMY_PYTHON_REACTOR_MANIFEST}"
 EVALUATOR="${SHIMMY_E2E_EVALUATOR:-${ROOT}/tests/e2e/python-reactor/evaluator.py}"
+WASM_NAME="$(basename "${WASM}")"
 NAME="shimmy-python-reactor-e2e-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
 PORT="${SHIMMY_E2E_PORT:-18080}"
 
@@ -28,13 +29,13 @@ cleanup
 docker run -d \
   --name "${NAME}" \
   --publish "127.0.0.1:${PORT}:8080" \
-  --volume "${WASM}:/runtime/runtime.wasm:ro" \
+  --volume "${WASM}:/runtime/${WASM_NAME}:ro" \
   --volume "${MANIFEST}:/runtime/manifest.json:ro" \
   --volume "${EVALUATOR}:/runtime/evaluator.py:ro" \
   --env LOG_LEVEL=error \
   --env FUNCTION_INTERFACE=wasm \
   --env FUNCTION_WASM_PROFILE=python-reactor \
-  --env FUNCTION_WASM_MODULE=/runtime/runtime.wasm \
+  --env FUNCTION_WASM_MODULE="/runtime/${WASM_NAME}" \
   --env FUNCTION_WASM_MANIFEST=/runtime/manifest.json \
   --env FUNCTION_WASM_PYTHON_SCRIPT=/runtime/evaluator.py \
   --env FUNCTION_WASM_PYTHON_LIFECYCLE=snapshot \
