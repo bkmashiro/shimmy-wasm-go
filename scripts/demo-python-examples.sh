@@ -182,6 +182,40 @@ run_scipy_pyodide() {
   echo "    ✓ SciPy sample accepted"
 }
 
+run_matplotlib_pyodide() {
+  if ! need node || ! need npm; then
+    echo
+    echo "==> Skipping Matplotlib route: node/npm not installed"
+    return 0
+  fi
+
+  echo
+  echo "==> Matplotlib route: real pyplot PNG rendering via Pyodide"
+  (cd "${ROOT}/examples/eval-pyodide" && npm install --silent)
+
+  local p base log pid resp
+  p="$(port)"; base="http://${HOST}:${p}"; log="${LOG_DIR}/python-matplotlib.log"; rm -f "${log}"
+  (
+    cd "${ROOT}"
+    exec env \
+      LOG_LEVEL=error \
+      FUNCTION_INTERFACE=pyodide \
+      FUNCTION_PYODIDE_RUNNER="${ROOT}/examples/eval-pyodide/runner.js" \
+      FUNCTION_PYODIDE_SCRIPT="${ROOT}/examples/eval-matplotlib/eval.py" \
+      FUNCTION_PYODIDE_PACKAGES=matplotlib \
+      FUNCTION_MAX_PROCS=1 \
+      FUNCTION_WORKER_SEND_TIMEOUT=60s \
+      "${BIN}" serve --host "${HOST}" --port "${p}"
+  ) >"${log}" 2>&1 &
+  pid="$!"
+  wait_for_health "${pid}" "${base}" "${log}" 240
+  resp="$(json_post "${base}" "" "" '{"values":[0,1,4,9]}')"
+  echo "${resp}" | python3 -m json.tool
+  assert_correct "${resp}"
+  stop_pid "${pid}"
+  echo "    ✓ Matplotlib PNG rendered"
+}
+
 main() {
   local mode="${1:-all}"
   if ! need go || ! need curl || ! need python3; then
@@ -218,6 +252,7 @@ main() {
 
   if [[ "${mode}" == "pyodide-only" ]]; then
     run_scipy_pyodide
+    run_matplotlib_pyodide
     echo
     echo "✅ Pyodide example demo completed. Logs: ${LOG_DIR}"
     return 0
@@ -226,6 +261,7 @@ main() {
   run_plain_reactor
   run_numpy_reactor
   run_scipy_pyodide
+  run_matplotlib_pyodide
 
   echo
   echo "✅ Python example demos completed. Logs: ${LOG_DIR}"

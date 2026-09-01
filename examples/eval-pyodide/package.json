@@ -9,6 +9,6 @@
     "smoke": "node runner.js ../eval-scipy/eval.py"
   },
   "dependencies": {
-    "pyodide": "^0.28.3"
+    "pyodide": "0.27.7"
   }
 }

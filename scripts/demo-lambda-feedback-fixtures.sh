@@ -389,6 +389,42 @@ run_pyodide_compare_boolean() {
   echo "    PASS"
 }
 
+run_pyodide_short_text() {
+  if ! need node; then
+    echo "==> pyodide-short-text (skipped): node missing"
+    MODE_SKIPPED=1
+    return 0
+  fi
+
+  if [[ ! -d "${ROOT}/examples/eval-pyodide/node_modules/pyodide" ]]; then
+    echo "==> pyodide-short-text (skipped): node_modules/pyodide missing"
+    MODE_SKIPPED=1
+    return 0
+  fi
+
+  local root="${LF_SHORT_TEXT_BUNDLE:-${ROOT}/.demo-pyodide-bundles/short-text-answer}"
+  if [[ ! -f "${root}/evaluation.py" || ! -d "${root}/nltk_data" ]]; then
+    echo "error: prepared shortTextAnswer bundle missing: ${root}" >&2
+    echo "prepare it with scripts/prepare-short-text-pyodide-bundle.py" >&2
+    return 1
+  fi
+
+  local response_json
+  if ! response_json="$(run_pyodide_rpc_request \
+      "${root}" \
+      "evaluation:evaluation_function" \
+      "" \
+      "evaluate" \
+      "A xor gate takes 2 inputs" \
+      "There are 2 inputs in a xor gate" \
+      "{}" \
+      "gensim,nltk,matplotlib")"; then
+    return 1
+  fi
+  assert_eval_true "pyodide-short-text" "${response_json}"
+  echo "    PASS"
+}
+
 run_list() {
   echo "Available modes:"
   echo "  list"
@@ -396,6 +432,7 @@ run_list() {
   echo "  local-compare-boolean"
   echo "  pyodide-boilerplate"
   echo "  pyodide-compare-boolean"
+  echo "  pyodide-short-text"
   echo "  all"
 }
 
@@ -496,6 +533,9 @@ main() {
       ;;
     pyodide-compare-boolean)
       run_pyodide_compare_boolean
+      ;;
+    pyodide-short-text)
+      run_pyodide_short_text
       ;;
     all)
       run_all

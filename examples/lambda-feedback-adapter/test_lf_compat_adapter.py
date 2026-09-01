@@ -120,11 +120,17 @@ class DictLike:
         return {"kind": "dict"}
 
 
+class ScalarLike:
+    def item(self) -> bool:
+        return True
+
+
 @pytest.mark.parametrize(
     "value, expected",
     [
         (ModelLike(), {"kind": "model_dump"}),
         (DictLike(), {"kind": "dict"}),
+        ({"is_correct": ScalarLike()}, {"is_correct": True}),
     ],
 )
 def test_normalize_result_handles_model_or_dict_methods(value: object, expected: dict[str, Any]) -> None:

@@ -709,49 +709,93 @@ func TestAgentPythonDispatcherRealLambdaFeedbackBundle(t *testing.T) {
 	_, currentFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", ".."))
-	bundlePath := filepath.Join(t.TempDir(), "boilerplate.bundle.py")
-	command := exec.Command("python3",
-		filepath.Join(repoRoot, "tools", "lf-bundle-python", "lf_bundle_python.py"),
-		"--root", filepath.Join(repoRoot, "examples", "lambda-feedback-fixtures", "boilerplate-python"),
-		"--adapter-root", filepath.Join(repoRoot, "examples", "lambda-feedback-adapter"),
-		"--eval-entrypoint", "evaluation_function.evaluation:evaluation_function",
-		"--preview-entrypoint", "evaluation_function.preview:preview_function",
-		"--out", bundlePath,
-	)
-	command.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, string(output))
 
-	dispatcher := NewAgentPythonDispatcher(Config{
-		ModulePath:              wasmPath,
-		AgentPythonManifestPath: manifestPath,
-		PythonScriptPath:        bundlePath,
-		MaxMemoryPages:          8192,
-		MaxInstances:            1,
-		Timeout:                 2 * time.Minute,
-	}, zap.NewNop())
-	startContext, startCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer startCancel()
-	require.NoError(t, dispatcher.Start(startContext))
-	t.Cleanup(func() {
-		shutdownContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_ = dispatcher.Shutdown(shutdownContext)
-	})
+	tests := []struct {
+		name              string
+		fixture           string
+		response          any
+		answer            any
+		params            map[string]any
+		previewEntrypoint string
+		checkPreview      bool
+	}{
+		{
+			name:              "boilerplate-python",
+			fixture:           "boilerplate-python",
+			response:          "same",
+			answer:            "same",
+			params:            map[string]any{},
+			previewEntrypoint: "evaluation_function.preview:preview_function",
+			checkPreview:      true,
+		},
+		{
+			name:     "array-equal",
+			fixture:  "array-equal",
+			response: []any{"1", "2"},
+			answer:   []any{"1", "2"},
+			params:   map[string]any{},
+		},
+		{
+			name:     "is-similar",
+			fixture:  "is-similar",
+			response: 1.01,
+			answer:   1.0,
+			params:   map[string]any{"atol": 0.02},
+		},
+	}
 
-	evalResult, err := dispatcher.Send(context.Background(), "eval", map[string]any{
-		"response": "same",
-		"answer":   "same",
-		"params":   map[string]any{},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, true, evalResult["result"].(map[string]any)["is_correct"])
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bundlePath := filepath.Join(t.TempDir(), test.name+".bundle.py")
+			args := []string{
+				filepath.Join(repoRoot, "tools", "lf-bundle-python", "lf_bundle_python.py"),
+				"--root", filepath.Join(repoRoot, "examples", "lambda-feedback-fixtures", test.fixture),
+				"--adapter-root", filepath.Join(repoRoot, "examples", "lambda-feedback-adapter"),
+				"--eval-entrypoint", "evaluation_function.evaluation:evaluation_function",
+				"--out", bundlePath,
+			}
+			if test.previewEntrypoint != "" {
+				args = append(args, "--preview-entrypoint", test.previewEntrypoint)
+			}
+			command := exec.Command("python3", args...)
+			command.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+			output, err := command.CombinedOutput()
+			require.NoError(t, err, string(output))
 
-	previewResult, err := dispatcher.Send(context.Background(), "preview", map[string]any{
-		"response": "x+y",
-		"params":   map[string]any{},
-	})
-	require.NoError(t, err)
-	preview := previewResult["result"].(map[string]any)["preview"].(map[string]any)
-	assert.Equal(t, "x+y", preview["sympy"])
+			dispatcher := NewAgentPythonDispatcher(Config{
+				ModulePath:              wasmPath,
+				AgentPythonManifestPath: manifestPath,
+				PythonScriptPath:        bundlePath,
+				MaxMemoryPages:          8192,
+				MaxInstances:            1,
+				Timeout:                 2 * time.Minute,
+			}, zap.NewNop())
+			startContext, startCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer startCancel()
+			require.NoError(t, dispatcher.Start(startContext))
+			t.Cleanup(func() {
+				shutdownContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_ = dispatcher.Shutdown(shutdownContext)
+			})
+
+			evalResult, err := dispatcher.Send(context.Background(), "eval", map[string]any{
+				"response": test.response,
+				"answer":   test.answer,
+				"params":   test.params,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, true, evalResult["result"].(map[string]any)["is_correct"])
+
+			if test.checkPreview {
+				previewResult, err := dispatcher.Send(context.Background(), "preview", map[string]any{
+					"response": "x+y",
+					"params":   map[string]any{},
+				})
+				require.NoError(t, err)
+				preview := previewResult["result"].(map[string]any)["preview"].(map[string]any)
+				assert.Equal(t, "x+y", preview["sympy"])
+			}
+		})
+	}
 }

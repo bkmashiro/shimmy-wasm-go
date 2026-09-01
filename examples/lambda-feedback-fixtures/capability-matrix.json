@@ -24,24 +24,24 @@
   {
     "fixture": "array-equal",
     "source": ".demo-lambda-sources/ArrayEqual/app",
-    "status": "agent-python-candidate",
+    "status": "agent-python-qualified",
     "agent_python_bundle": true,
     "pyodide_package": true,
     "requires_pure_python_deps": [],
     "requires_agent_artifact_deps": ["numpy"],
-    "unqualified_reasons": ["current Agent Python fixture E2E has not been run"],
-    "verified_probes": []
+    "unqualified_reasons": [],
+    "verified_probes": ["eval"]
   },
   {
     "fixture": "is-similar",
     "source": ".demo-lambda-sources/IsSimilar/app",
-    "status": "agent-python-candidate",
+    "status": "agent-python-qualified",
     "agent_python_bundle": true,
     "pyodide_package": true,
     "requires_pure_python_deps": [],
     "requires_agent_artifact_deps": ["numpy"],
-    "unqualified_reasons": ["current Agent Python fixture E2E has not been run"],
-    "verified_probes": []
+    "unqualified_reasons": [],
+    "verified_probes": ["eval"]
   },
   {
     "fixture": "symbolic-equal",
@@ -63,6 +63,6 @@
     "requires_pure_python_deps": ["certifi"],
     "requires_agent_artifact_deps": ["numpy"],
     "unqualified_reasons": ["nltk data/filesystem setup", "gensim/scipy dependency chain", "matplotlib native/rendering stack"],
-    "verified_probes": []
+    "verified_probes": ["pyodide-eval"]
   }
 ]

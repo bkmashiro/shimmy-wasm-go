@@ -53,8 +53,8 @@ def test_capability_matrix_matches_agent_python_qualification() -> None:
     rows = {row["fixture"]: row for row in json.loads(MATRIX.read_text())}
 
     assert rows["boilerplate-python"]["status"] == "agent-python-qualified"
-    assert rows["array-equal"]["status"] == "agent-python-candidate"
-    assert rows["is-similar"]["status"] == "agent-python-candidate"
+    assert rows["array-equal"]["status"] == "agent-python-qualified"
+    assert rows["is-similar"]["status"] == "agent-python-qualified"
     assert rows["compare-boolean"]["status"] == "not-qualified"
     assert rows["symbolic-equal"]["status"] == "not-qualified"
     assert rows["short-text-answer"]["status"] == "pyodide-only"

@@ -104,6 +104,17 @@ def _normalize_jsonish(value):
         if isinstance(out, dict):
             return _normalize_jsonish(out)
 
+    # NumPy scalar values (for example np.bool_ from np.allclose) expose
+    # item() but are not instances of Python's built-in scalar types.
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            scalar = item()
+        except (TypeError, ValueError):
+            scalar = value
+        if scalar is not value and isinstance(scalar, (str, int, float, bool)):
+            return scalar
+
     if is_dataclass(value) and not isinstance(value, type):
         return _normalize_jsonish(asdict(value))
 

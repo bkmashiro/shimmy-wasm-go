@@ -31,7 +31,8 @@ The runner supports two modes.
 This is the historical mode and remains for compatibility.
 
 - provide `<eval.py>` as argv[2], or set `FUNCTION_PYODIDE_SCRIPT`
-- the file must define `evaluation_function(response, answer, params)`
+- the file must define `dispatch(method, payload)` or
+  `evaluation_function(response, answer, params)`
 - legacy defaults to installing `scipy` on startup unless `FUNCTION_PYODIDE_PACKAGES`
 is set
 
@@ -88,12 +89,16 @@ written to avoid cross-request mutable global state that must be isolated.
 ## Prerequisites
 
 - Node.js ≥ 18
-- `npm install pyodide` (or `yarn add pyodide`)
+- the repository-pinned Pyodide 0.27.7 package
 
 ```bash
 cd examples/eval-pyodide
-npm install pyodide
+npm ci
 ```
+
+The version is pinned because 0.27.7 includes the WASM build of `gensim` used
+by Lambda Feedback's `shortTextAnswer`; Pyodide 0.28.3 no longer publishes
+that package in its package index.
 
 Pyodide's npm package (~100 MB) ships the Python runtime and a package index.
 By default, the legacy script mode preinstalls `scipy`; package mode only installs
@@ -123,6 +128,15 @@ FUNCTION_PYODIDE_SCRIPT=$(pwd)/eval.py \
 ```bash
 # From repo root: local adapter + Pyodide package-mode smoke tests.
 scripts/demo-lambda-feedback-fixtures.sh all
+
+# Prepare and execute the real data-bearing shortTextAnswer evaluator.
+scripts/prepare-short-text-pyodide-bundle.py \
+  --source .demo-lambda-sources/shortTextAnswer/app \
+  --out .demo-pyodide-bundles/short-text-answer
+scripts/demo-lambda-feedback-fixtures.sh pyodide-short-text
+
+# Run SciPy and a real matplotlib.pyplot PNG render through Shimmy HTTP E2E.
+scripts/demo-python-examples.sh pyodide-only
 ```
 
 ## Wire protocol

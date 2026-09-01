@@ -41,6 +41,8 @@ const {
   encodeFrame,
 } = require("./framed-stdio");
 const { parsePackages } = require("./package-config");
+const { buildPackageBootstrap } = require("./package-bootstrap");
+const { buildLegacyInvocation } = require("./legacy-invocation");
 
 const VFS_ROOT = "/__evaluator_root__";
 const ADAPTER_VFS_ROOT = "/__lf_adapter_root__";
@@ -242,62 +244,11 @@ async function setupPackageMode(pyodide) {
   pyodide.globals.set("__preview_entrypoint__", previewEntrypoint || "");
 
   pyodide.runPython(
-    `
-import importlib
-import importlib.util
-import sys
-
-# Make evaluator package modules importable.
-if "${VFS_ROOT}" not in sys.path:
-    sys.path.insert(0, "${VFS_ROOT}")
-
-# Make the adapter's sibling lf_toolkit shim importable.
-if "${ADAPTER_VFS_ROOT}" not in sys.path:
-    sys.path.insert(0, "${ADAPTER_VFS_ROOT}")
-
-# Keep common temp locations importable.
-if "/tmp" not in sys.path:
-    sys.path.insert(0, "/tmp")
-
-# Make adapter available by loading source in the Pyodide FS.
-spec = importlib.util.spec_from_file_location("lf_compat_adapter", "${ADAPTER_VFS_PATH}")
-if spec is None or spec.loader is None:
-    raise RuntimeError("Failed to build loader for lf_compat_adapter module")
-
-lf_adapter = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(lf_adapter)
-
-_eval_entrypoint = __eval_entrypoint__
-_preview_entrypoint = __preview_entrypoint__
-
-if not _eval_entrypoint:
-    raise RuntimeError("FUNCTION_PYODIDE_EVAL_ENTRYPOINT is required in package mode")
-
-_eval_fn = lf_adapter.load_entrypoint(_eval_entrypoint)
-_preview_fn = lf_adapter.load_entrypoint(_preview_entrypoint) if _preview_entrypoint else None
-
-
-def __lf_invoke(method, response, answer, params):
-    if method == "preview" and _preview_fn is not None:
-        fn = _preview_fn
-    else:
-        fn = _eval_fn
-
-    if fn is None:
-        raise RuntimeError("No evaluation function available")
-
-    payload = {"response": response, "answer": answer, "params": params}
-    normalized_method = "preview" if method == "preview" else "eval"
-    return lf_adapter.normalize_result(
-        lf_adapter.call_function(
-            fn,
-            normalized_method,
-            payload["response"],
-            payload["answer"],
-            payload["params"],
-        )
-    )
-    `
+    buildPackageBootstrap({
+      evaluatorRoot: VFS_ROOT,
+      adapterRoot: ADAPTER_VFS_ROOT,
+      adapterPath: ADAPTER_VFS_PATH,
+    })
   );
 }
 
@@ -384,30 +335,18 @@ async function main() {
  */
 async function handleRequest(pyodide, method, payload) {
   if (legacyMode) {
-    // Legacy single-file mode: always call evaluation_function() for compatibility.
+    // Legacy single-file mode accepts either the reactor dispatch ABI or
+    // evaluation_function() while keeping a fresh namespace per request.
     const ns = pyodide.toPy({
       __eval_source__: evalCode,
+      __method__: method,
       _response: payload.response,
       _answer: payload.answer,
       _params: payload.params,
     });
 
     try {
-      const resultProxy = pyodide.runPython(
-        `
-# Fresh namespace — state isolation (no memory snapshot needed).
-_ns = {}
-exec(__eval_source__, _ns)
-
-_fn = _ns.get("evaluation_function")
-if _fn is None:
-    raise RuntimeError("eval script does not define evaluation_function()")
-
-_result = _fn(_response, _answer, _params)
-_result
-`,
-        { globals: ns }
-      );
+      const resultProxy = pyodide.runPython(buildLegacyInvocation(), { globals: ns });
 
       return asJs(resultProxy);
     } finally {

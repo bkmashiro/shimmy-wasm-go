@@ -12,11 +12,11 @@ than the old reactor matrix:
 | Fixture | Agent Python status | Requirements | Pyodide stance |
 |---|---|---|---|
 | `boilerplate-python` | package bundle supported | evaluator + adapter only | supported |
-| `array-equal` | candidate | NumPy core is present; fixture E2E must be rerun before qualification | supported |
-| `is-similar` | candidate | NumPy core is present; fixture E2E must be rerun before qualification | supported |
+| `array-equal` | package bundle supported | NumPy core | supported |
+| `is-similar` | package bundle supported | NumPy core | supported |
 | `compare-boolean` | not qualified | SymPy is not packaged and no compatibility polyfill is injected | supported |
 | `symbolic-equal` | not qualified | SymPy/LaTeX stack is not packaged | supported |
-| `short-text-answer` | Pyodide route | `nltk` data, `gensim`/SciPy, and plotting stack | default compatibility path |
+| `short-text-answer` | Pyodide route | `nltk` data, `gensim`/SciPy, and plotting stack | eval E2E verified |
 
 Rules of thumb:
 - Pure Python evaluator code and dependencies can be bundled with `tools/lf-bundle-python --include-root`.
@@ -51,7 +51,7 @@ Rules of thumb:
 - **Contains (runtime files only):** `evaluation_function/evaluation.py`, `evaluation_function/main.py`,
   `evaluation_function_utils/errors.py`
 - **Compatibility behavior covered:**
-  - NumPy array construction and `np.allclose(...)`; pending current-artifact E2E.
+  - NumPy array construction and `np.allclose(...)`; current-artifact eval E2E verified.
   - Small compatibility shim for `evaluation_function_utils.errors.EvaluationException`.
 
 ### `is-similar`
@@ -60,7 +60,7 @@ Rules of thumb:
 - **Compatibility behavior covered:**
   - NumPy scalar helper import (`from numpy import spacing`).
   - Numeric tolerance feedback fields returned through bundle normalization;
-    pending current-artifact E2E.
+    current-artifact eval E2E verified.
 
 ### `symbolic-equal`
 - **Source repo/folder:** `.demo-lambda-sources/SymbolicEqual/app`
